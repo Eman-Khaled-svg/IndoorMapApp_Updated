@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+// import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -656,47 +656,63 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
               ),
             ),
             const SizedBox(height: 40),
-            // Demo buttons for testing without QR scanner
-            if (kDebugMode) ...[
-              const Text(
-                'أزرار تجريبية للاختبار:',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey,
-                  fontStyle: FontStyle.italic,
+            // أزرار التجربة - تظهر دائماً الآن
+            const Text(
+              'أو اختر الدور مباشرة:',
+              style: TextStyle(
+                fontSize: 16,
+                color: Color(0xFF2E7D9A),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 15),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () =>
+                      _processQRCode('CITYSTARS_FLOOR_1_ENTRANCE'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4CAF50),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Text('🛍️', style: TextStyle(fontSize: 18)),
+                  label: const Text('الدور الأول',
+                      style: TextStyle(color: Colors.white, fontSize: 12)),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton(
-                    onPressed: () =>
-                        _processQRCode('CITYSTARS_FLOOR_1_ENTRANCE'),
-                    style:
-                        ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-                    child: const Text('دور 1',
-                        style: TextStyle(color: Colors.white)),
+                ElevatedButton.icon(
+                  onPressed: () =>
+                      _processQRCode('CITYSTARS_FLOOR_2_ENTRANCE'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF9800),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  ElevatedButton(
-                    onPressed: () =>
-                        _processQRCode('CITYSTARS_FLOOR_2_ENTRANCE'),
-                    style:
-                        ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                    child: const Text('دور 2',
-                        style: TextStyle(color: Colors.white)),
+                  icon: const Text('🍔', style: TextStyle(fontSize: 18)),
+                  label: const Text('الدور الثاني',
+                      style: TextStyle(color: Colors.white, fontSize: 12)),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () =>
+                      _processQRCode('CITYSTARS_FLOOR_3_ENTRANCE'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE91E63),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  ElevatedButton(
-                    onPressed: () =>
-                        _processQRCode('CITYSTARS_FLOOR_3_ENTRANCE'),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange),
-                    child: const Text('دور 3',
-                        style: TextStyle(color: Colors.white)),
-                  ),
-                ],
-              ),
-            ],
+                  icon: const Text('💊', style: TextStyle(fontSize: 18)),
+                  label: const Text('الدور الثالث',
+                      style: TextStyle(color: Colors.white, fontSize: 12)),
+                ),
+              ],
+            ),
           ],
         ),
       ),
