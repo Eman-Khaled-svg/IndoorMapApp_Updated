@@ -1,0 +1,19 @@
+{
+  "security_settings": "إعدادات الأمان",
+  "face_id_title": "تسجيل الدخول بالوجه",
+  "face_id_description": "استخدم بصمة الوجه للوصول السريع للتطبيق",
+  "auto_logout_title": "الخروج التلقائي",
+  "auto_logout_description": "الخروج التلقائي بعد 5 دقائق من عدم النشاط",
+  "change_password_title": "تغيير كلمة المرور",
+  "change_password_description": "قم بتغيير كلمة مرور حسابك",
+  
+  "preferred_apps": "أفضل التطبيقات",
+  "navigation_app_title": "اختيار تطبيق التنقل",
+  "navigation_app_description": "اختر تطبيق التنقل المفضل لديك",
+  "communication_app_title": "اختيار تطبيق التواصل",
+  "communication_app_description": "اختر تطبيق المراسلة المفضل لديك",
+  
+  "applications": "التطبيقات", 
+  "location_services_title": "خدمات الموقع",
+  "location_services_description": "السماح للتطبيقات بالوصول لموقعك الحالي"
+}

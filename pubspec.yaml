@@ -1,0 +1,55 @@
+name: indoor_map_app
+description: A Flutter application with Google Maps and routing.
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations: # لدعم اللغات
+    sdk: flutter
+
+  # الحزم المطلوبة للخريطة والمسارات
+  supabase_flutter: ^2.3.4
+  google_maps_flutter: ^2.9.0
+  google_maps_flutter_web: ^0.5.4+2
+  location: ^4.4.0
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
+
+  geolocator: ^10.1.0
+  flutter_polyline_points: ^3.0.1
+  flutter_dotenv: ^5.1.0
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  font_awesome_flutter: ^10.7.0
+  # qr_code_scanner: ^1.0.1
+  mobile_scanner: ^6.0.2
+
+  # حزم أساسية
+  cupertino_icons: ^1.0.2
+  intl: ^0.20.2
+  shared_preferences: ^2.2.2
+  provider: ^6.1.5
+  flutter_gen: ^5.11.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  generate: true
+  uses-material-design: true
+
+  assets:
+    - .env
+    - assets/images/
+
+flutter_intl:
+  enabled: true

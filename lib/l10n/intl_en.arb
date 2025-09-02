@@ -1,0 +1,20 @@
+
+{
+  "security_settings": "Security Settings",
+  "face_id_title": "Sign in with Face ID",
+  "face_id_description": "Use Face ID for quick access to the application",
+  "auto_logout_title": "Auto-logout",
+  "auto_logout_description": "Automatically logout after 5 minutes of inactivity",
+  "change_password_title": "Change Password",
+  "change_password_description": "Change your account password",
+  
+  "preferred_apps": "Preferred Apps",
+  "navigation_app_title": "Choose Navigation App",
+  "navigation_app_description": "Select your preferred navigation application",
+  "communication_app_title": "Choose Communication App", 
+  "communication_app_description": "Select your preferred messaging application",
+  
+  "applications": "Applications",
+  "location_services_title": "Location Services",
+  "location_services_description": "Allow apps to access your current location"
+}
