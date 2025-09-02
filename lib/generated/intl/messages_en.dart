@@ -21,45 +21,5 @@ class MessageLookup extends MessageLookupByLibrary {
   String get localeName => 'en';
 
   final messages = _notInlinedMessages(_notInlinedMessages);
-  static Map<String, Function> _notInlinedMessages(_) => <String, Function>{
-    "applications": MessageLookupByLibrary.simpleMessage("Applications"),
-    "auto_logout_description": MessageLookupByLibrary.simpleMessage(
-      "Automatically logout after 5 minutes of inactivity",
-    ),
-    "auto_logout_title": MessageLookupByLibrary.simpleMessage("Auto-logout"),
-    "change_password_description": MessageLookupByLibrary.simpleMessage(
-      "Change your account password",
-    ),
-    "change_password_title": MessageLookupByLibrary.simpleMessage(
-      "Change Password",
-    ),
-    "communication_app_description": MessageLookupByLibrary.simpleMessage(
-      "Select your preferred messaging application",
-    ),
-    "communication_app_title": MessageLookupByLibrary.simpleMessage(
-      "Choose Communication App",
-    ),
-    "face_id_description": MessageLookupByLibrary.simpleMessage(
-      "Use Face ID for quick access to the application",
-    ),
-    "face_id_title": MessageLookupByLibrary.simpleMessage(
-      "Sign in with Face ID",
-    ),
-    "location_services_description": MessageLookupByLibrary.simpleMessage(
-      "Allow apps to access your current location",
-    ),
-    "location_services_title": MessageLookupByLibrary.simpleMessage(
-      "Location Services",
-    ),
-    "navigation_app_description": MessageLookupByLibrary.simpleMessage(
-      "Select your preferred navigation application",
-    ),
-    "navigation_app_title": MessageLookupByLibrary.simpleMessage(
-      "Choose Navigation App",
-    ),
-    "preferred_apps": MessageLookupByLibrary.simpleMessage("Preferred Apps"),
-    "security_settings": MessageLookupByLibrary.simpleMessage(
-      "Security Settings",
-    ),
-  };
+  static Map<String, Function> _notInlinedMessages(_) => <String, Function>{};
 }

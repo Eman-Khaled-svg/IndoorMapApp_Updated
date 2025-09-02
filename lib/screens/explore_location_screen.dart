@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:location/location.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 class ExploreLocationScreen extends StatefulWidget {
   final String userName;
@@ -10,192 +9,241 @@ class ExploreLocationScreen extends StatefulWidget {
   @override
   State<ExploreLocationScreen> createState() => _ExploreLocationScreenState();
 }
-class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
-  GoogleMapController? _mapController;
-  final Location _location = Location();
-  LocationData? _currentLocation;
 
-  
-  bool _isLoadingLocation = false;
-  bool _showTrafficLayer = true;
-  // Removed _selectedPlace since it wasn't being used
-  
-  // Cairo Mall location (example coordinates for Cairo)
-  static const LatLng _cairoMallLocation = LatLng(30.0626, 31.2497);
-  
-  // Mall stores and places with their coordinates
-  final Map<String, MallPlace> _mallPlaces = {
-    'Fashion Hub': MallPlace(
-      name: 'Fashion Hub',
-      position: LatLng(30.0628, 31.2495),
-      category: 'Clothing & Fashion',
-      emoji: '🛍️',
-      description: 'Latest fashion trends and designer clothes',
+class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
+  int? _currentFloor;
+  bool _isQRScannerOpen = false;
+  MobileScannerController? _scannerController; // بدل QRViewController
+
+  // City Stars Mall floor plans - each floor has different stores
+  final Map<int, FloorData> _floorPlans = {
+    1: FloorData(
+      floorNumber: 1,
+      floorName: 'الدور الأول - الأزياء والإلكترونيات',
+      stores: {
+        'Zara': MallStore(
+          name: 'Zara',
+          position: const Offset(150, 200),
+          category: 'أزياء نسائية',
+          emoji: '👗',
+          description: 'أحدث صيحات الموضة العالمية',
+          floorNumber: 1,
+        ),
+        'H&M': MallStore(
+          name: 'H&M',
+          position: const Offset(300, 180),
+          category: 'أزياء رجالية ونسائية',
+          emoji: '🧥',
+          description: 'موضة عصرية بأسعار مناسبة',
+          floorNumber: 1,
+        ),
+        'Apple Store': MallStore(
+          name: 'Apple Store',
+          position: const Offset(200, 120),
+          category: 'إلكترونيات',
+          emoji: '📱',
+          description: 'أحدث منتجات أبل',
+          floorNumber: 1,
+        ),
+        'Samsung': MallStore(
+          name: 'Samsung',
+          position: const Offset(350, 120),
+          category: 'إلكترونيات',
+          emoji: '📺',
+          description: 'هواتف وأجهزة سامسونج',
+          floorNumber: 1,
+        ),
+        'Carrefour Express': MallStore(
+          name: 'Carrefour Express',
+          position: const Offset(250, 300),
+          category: 'سوبرماركت',
+          emoji: '🛒',
+          description: 'احتياجات يومية وأطعمة',
+          floorNumber: 1,
+        ),
+      },
+      amenities: {
+        'ATM': const Offset(100, 250),
+        'Restroom': const Offset(380, 250),
+        'Information': const Offset(200, 50),
+        'Elevator': const Offset(50, 150),
+        'Escalator': const Offset(400, 150),
+      },
     ),
-    'Tech Center': MallPlace(
-      name: 'Tech Center',
-      position: LatLng(30.0624, 31.2499),
-      category: 'Electronics',
-      emoji: '📱',
-      description: 'Smartphones, laptops, and electronic gadgets',
+    2: FloorData(
+      floorNumber: 2,
+      floorName: 'الدور الثاني - المطاعم والترفيه',
+      stores: {
+        'KFC': MallStore(
+          name: 'KFC',
+          position: const Offset(120, 180),
+          category: 'مطاعم',
+          emoji: '🍗',
+          description: 'دجاج مقرمش وأطباق سريعة',
+          floorNumber: 2,
+        ),
+        'McDonald\'s': MallStore(
+          name: 'McDonald\'s',
+          position: const Offset(280, 160),
+          category: 'مطاعم',
+          emoji: '🍟',
+          description: 'البرجر الشهير والوجبات السريعة',
+          floorNumber: 2,
+        ),
+        'Pizza Hut': MallStore(
+          name: 'Pizza Hut',
+          position: const Offset(200, 220),
+          category: 'مطاعم',
+          emoji: '🍕',
+          description: 'بيتزا إيطالية أصلية',
+          floorNumber: 2,
+        ),
+        'Starbucks': MallStore(
+          name: 'Starbucks',
+          position: const Offset(150, 120),
+          category: 'مقاهي',
+          emoji: '☕',
+          description: 'قهوة عالمية ومشروبات ساخنة',
+          floorNumber: 2,
+        ),
+        'Cinema': MallStore(
+          name: 'VOX Cinema',
+          position: const Offset(320, 280),
+          category: 'ترفيه',
+          emoji: '🎬',
+          description: 'أحدث الأفلام العربية والأجنبية',
+          floorNumber: 2,
+        ),
+        'Kids Area': MallStore(
+          name: 'منطقة الأطفال',
+          position: const Offset(100, 300),
+          category: 'ترفيه',
+          emoji: '🎮',
+          description: 'ألعاب وأنشطة للأطفال',
+          floorNumber: 2,
+        ),
+      },
+      amenities: {
+        'ATM': const Offset(350, 200),
+        'Restroom': const Offset(80, 100),
+        'Information': const Offset(200, 50),
+        'Elevator': const Offset(50, 150),
+        'Escalator': const Offset(400, 150),
+        'Food Court': const Offset(200, 320),
+      },
     ),
-    'Food Court': MallPlace(
-      name: 'Food Court',
-      position: LatLng(30.0626, 31.2501),
-      category: 'Restaurants',
-      emoji: '🍔',
-      description: 'Various restaurants and fast food options',
-    ),
-    'Pharmacy': MallPlace(
-      name: 'Pharmacy',
-      position: LatLng(30.0622, 31.2495),
-      category: 'Health & Beauty',
-      emoji: '💊',
-      description: 'Medicine, health care, and beauty products',
-    ),
-    'Kids Zone': MallPlace(
-      name: 'Kids Zone',
-      position: LatLng(30.0630, 31.2497),
-      category: 'Entertainment',
-      emoji: '🧸',
-      description: 'Play area and toys for children',
-    ),
-    'Cinema': MallPlace(
-      name: 'Cinema',
-      position: LatLng(30.0625, 31.2503),
-      category: 'Entertainment',
-      emoji: '🎬',
-      description: 'Latest movies and entertainment',
+    3: FloorData(
+      floorNumber: 3,
+      floorName: 'الدور الثالث - الجمال والصحة',
+      stores: {
+        'Pharmacy': MallStore(
+          name: 'صيدلية سيف',
+          position: const Offset(180, 200),
+          category: 'صيدلية',
+          emoji: '💊',
+          description: 'أدوية ومستحضرات طبية',
+          floorNumber: 3,
+        ),
+        'MAC Cosmetics': MallStore(
+          name: 'MAC Cosmetics',
+          position: const Offset(280, 180),
+          category: 'مستحضرات تجميل',
+          emoji: '💄',
+          description: 'مستحضرات تجميل عالمية',
+          floorNumber: 3,
+        ),
+        'The Body Shop': MallStore(
+          name: 'The Body Shop',
+          position: const Offset(150, 150),
+          category: 'عناية بالجسم',
+          emoji: '🧴',
+          description: 'منتجات طبيعية للعناية',
+          floorNumber: 3,
+        ),
+        'Fitness First': MallStore(
+          name: 'Fitness First',
+          position: const Offset(320, 250),
+          category: 'لياقة بدنية',
+          emoji: '🏋️',
+          description: 'نادي رياضي وصحي',
+          floorNumber: 3,
+        ),
+        'Optical Shop': MallStore(
+          name: 'محل النظارات',
+          position: const Offset(120, 280),
+          category: 'نظارات',
+          emoji: '👓',
+          description: 'نظارات طبية وشمسية',
+          floorNumber: 3,
+        ),
+        'Spa Center': MallStore(
+          name: 'مركز السبا',
+          position: const Offset(350, 120),
+          category: 'استرخاء',
+          emoji: '🧘',
+          description: 'خدمات التدليك والاسترخاء',
+          floorNumber: 3,
+        ),
+      },
+      amenities: {
+        'ATM': const Offset(100, 180),
+        'Restroom': const Offset(380, 180),
+        'Information': const Offset(200, 50),
+        'Elevator': const Offset(50, 150),
+        'Escalator': const Offset(400, 150),
+      },
     ),
   };
 
-  Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
+  // Valid QR codes for each floor
+  final Map<String, int> _validQRCodes = {
+    'CITYSTARS_FLOOR_1_ENTRANCE': 1,
+    'CITYSTARS_FLOOR_2_ENTRANCE': 2,
+    'CITYSTARS_FLOOR_3_ENTRANCE': 3,
+  };
+
+  MallStore? _selectedStore;
+  String? _searchQuery;
 
   @override
   void initState() {
     super.initState();
-    _getCurrentLocation();
-    _createMarkers();
   }
 
-  Future<void> _getCurrentLocation() async {
+  Future<void> _scanQRCode() async {
+    _scannerController = MobileScannerController(); // جديد
     setState(() {
-      _isLoadingLocation = true;
+      _isQRScannerOpen = true;
     });
+  }
 
-    try {
-      bool serviceEnabled = await _location.serviceEnabled();
-      if (!serviceEnabled) {
-        serviceEnabled = await _location.requestService();
-        if (!serviceEnabled) {
-          _showLocationError('Location service is disabled');
-          return;
-        }
-      }
-
-      PermissionStatus permissionGranted = await _location.hasPermission();
-      if (permissionGranted == PermissionStatus.denied) {
-        permissionGranted = await _location.requestPermission();
-        if (permissionGranted != PermissionStatus.granted) {
-          _showLocationError('Location permission denied');
-          return;
-        }
-      }
-
-      // Configure location settings for better accuracy
-      await _location.changeSettings(
-        accuracy: LocationAccuracy.high,
-        interval: 1000,
-        distanceFilter: 10,
-      );
-
-      // Get high accuracy location with timeout
-      final locationData = await _location.getLocation().timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          throw Exception('Location request timed out');
-        },
-      );
-
-      // Validate location data
-      if (locationData.latitude == null || locationData.longitude == null) {
-        _showLocationError('Invalid location data received');
-        return;
-      }
-
-      // Check if location is reasonable (not 0,0 which is common error)
-      if (locationData.latitude!.abs() < 0.001 && locationData.longitude!.abs() < 0.001) {
-        _showLocationError('Location appears to be invalid (0,0). Please enable precise location.');
-        return;
-      }
-
+  void _processQRCode(String qrCode) {
+    if (_validQRCodes.containsKey(qrCode)) {
+      final floor = _validQRCodes[qrCode]!;
       setState(() {
-        _currentLocation = locationData;
-        _isLoadingLocation = false;
+        _currentFloor = floor;
+        _isQRScannerOpen = false;
       });
+      _scannerController?.dispose(); // بدل _qrController?.dispose()
 
-      if (kDebugMode) {
-        print('Location obtained: ${locationData.latitude}, ${locationData.longitude}');
-      }
-      if (kDebugMode) {
-        print('Accuracy: ${locationData.accuracy} meters');
-      }
-
-      // Update markers to include current location
-      _createMarkers();
-
-      if (_mapController != null && _currentLocation != null) {
-        _mapController!.animateCamera(
-          CameraUpdate.newLatLngZoom(
-            LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
-            16,
-          ),
-        );
-      }
-    } catch (e) {
-      _showLocationError('Failed to get location: $e');
-    }
-  }
-
-  void _createMarkers() {
-    _markers = _mallPlaces.entries.map((entry) {
-      return Marker(
-        markerId: MarkerId(entry.key),
-        position: entry.value.position,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        infoWindow: InfoWindow(
-          title: entry.value.name,
-          snippet: entry.value.category,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم الدخول إلى ${_floorPlans[floor]!.floorName}'),
+          backgroundColor: const Color(0xFF87CEEB),
+          duration: const Duration(seconds: 3),
         ),
-        onTap: () => _onMarkerTapped(entry.value),
       );
-    }).toSet();
-
-    // Add current location marker if available
-    if (_currentLocation != null) {
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('current_location'),
-          position: LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          infoWindow: InfoWindow(
-            title: 'Your Location',
-            snippet: 'Accuracy: ${_currentLocation!.accuracy?.toStringAsFixed(1) ?? "Unknown"} meters',
-          ),
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('رمز QR غير صحيح لمول سيتي ستارز'),
+          backgroundColor: Colors.red,
         ),
       );
     }
-    
-    setState(() {}); // Trigger rebuild to show updated markers
   }
 
-  void _onMarkerTapped(MallPlace place) {
-    // Removed the _selectedPlace assignment since it wasn't being used
-    _showPlaceDetails(place);
-  }
-
-  void _showPlaceDetails(MallPlace place) {
+  void _showStoreDetails(MallStore store) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -226,8 +274,8 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
-                // Place info
+
+                // Store info
                 Row(
                   children: [
                     Container(
@@ -237,7 +285,7 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        place.emoji,
+                        store.emoji,
                         style: const TextStyle(fontSize: 24),
                       ),
                     ),
@@ -247,7 +295,7 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            place.name,
+                            store.name,
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -255,10 +303,18 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
                             ),
                           ),
                           Text(
-                            place.category,
+                            store.category,
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.grey[600],
+                              color: Colors.black,
+                            ),
+                          ),
+                          Text(
+                            'الدور ${store.floorNumber}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF87CEEB),
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ],
@@ -266,27 +322,28 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 15),
-                
+
                 Text(
-                  place.description,
+                  store.description,
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.grey[700],
                   ),
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // Action buttons
                 Row(
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () => _getDirections(place.position),
+                        onPressed: () => _showDirections(store),
                         icon: const Icon(Icons.directions, color: Colors.white),
-                        label: const Text('Get Directions', style: TextStyle(color: Colors.white)),
+                        label: const Text('الاتجاهات',
+                            style: TextStyle(color: Colors.white)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF87CEEB),
                           shape: RoundedRectangleBorder(
@@ -298,9 +355,10 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () => _shareLocation(place),
+                        onPressed: () => _shareStore(store),
                         icon: const Icon(Icons.share, color: Color(0xFF87CEEB)),
-                        label: const Text('Share', style: TextStyle(color: Color(0xFF87CEEB))),
+                        label: const Text('مشاركة',
+                            style: TextStyle(color: Color(0xFF87CEEB))),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: Color(0xFF87CEEB)),
                           shape: RoundedRectangleBorder(
@@ -311,7 +369,7 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 10),
               ],
             ),
@@ -321,107 +379,40 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
     );
   }
 
-  Future<void> _getDirections(LatLng destination) async {
-    if (_currentLocation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Getting your location...'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      await _getCurrentLocation();
-      return;
-    }
-
-    Navigator.pop(context); // Close bottom sheet
-    
-    // Create route polyline (simplified - in real app you'd use Google Directions API)
-    final polyline = Polyline(
-      polylineId: const PolylineId('route'),
-      points: [
-        LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
-        destination,
-      ],
-      color: const Color(0xFF87CEEB),
-      width: 5,
-      patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-    );
-
-    setState(() {
-      _polylines.clear();
-      _polylines.add(polyline);
-    });
-
-    // Show route info
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Route calculated! 🗺️'),
-        backgroundColor: const Color(0xFF87CEEB),
-        action: SnackBarAction(
-          label: 'Clear',
-          textColor: Colors.white,
-          onPressed: () {
-            setState(() {
-              _polylines.clear();
-            });
-          },
-        ),
-      ),
-    );
-
-    // Adjust camera to show both points
-    _fitMarkersInView([
-      LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
-      destination,
-    ]);
-  }
-
-  void _fitMarkersInView(List<LatLng> points) {
-    if (points.isEmpty || _mapController == null) return;
-
-    double minLat = points.first.latitude;
-    double maxLat = points.first.latitude;
-    double minLng = points.first.longitude;
-    double maxLng = points.first.longitude;
-
-    for (LatLng point in points) {
-      minLat = minLat < point.latitude ? minLat : point.latitude;
-      maxLat = maxLat > point.latitude ? maxLat : point.latitude;
-      minLng = minLng < point.longitude ? minLng : point.longitude;
-      maxLng = maxLng > point.longitude ? maxLng : point.longitude;
-    }
-
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
-        ),
-        100.0, // padding
-      ),
-    );
-  }
-
-  void _shareLocation(MallPlace place) {
+  void _showDirections(MallStore store) {
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Shared location of ${place.name}! 📍'),
+        content: Text('الاتجاهات إلى ${store.name} - ${store.category}'),
         backgroundColor: const Color(0xFF87CEEB),
       ),
     );
   }
 
-  void _showLocationError(String message) {
-    setState(() {
-      _isLoadingLocation = false;
-    });
+  void _shareStore(MallStore store) {
+    Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
+        content: Text('تم مشاركة موقع ${store.name}'),
+        backgroundColor: const Color(0xFF87CEEB),
       ),
     );
+  }
+
+  List<MallStore> _getFilteredStores() {
+    if (_currentFloor == null) return [];
+
+    final stores = _floorPlans[_currentFloor]!.stores.values.toList();
+
+    if (_searchQuery == null || _searchQuery!.isEmpty) {
+      return stores;
+    }
+
+    return stores
+        .where((store) =>
+            store.name.toLowerCase().contains(_searchQuery!.toLowerCase()) ||
+            store.category.toLowerCase().contains(_searchQuery!.toLowerCase()))
+        .toList();
   }
 
   @override
@@ -429,303 +420,809 @@ class _ExploreLocationScreenState extends State<ExploreLocationScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFE3F2FD),
       appBar: AppBar(
-        title: const Text(
-          'Cairo Mall Navigator',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          _currentFloor != null
+              ? 'سيتي ستارز - الدور $_currentFloor'
+              : 'سيتي ستارز مول',
+          style:
+              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF87CEEB),
         elevation: 0,
         actions: [
-          IconButton(
-            onPressed: () {
-              setState(() {
-                _showTrafficLayer = !_showTrafficLayer;
-              });
-            },
-            icon: Icon(
-              _showTrafficLayer ? Icons.traffic : Icons.traffic_outlined,
-              color: Colors.white,
+          if (_currentFloor != null) ...[
+            IconButton(
+              onPressed: () {
+                showSearch(
+                  context: context,
+                  delegate: StoreSearchDelegate(
+                      _getFilteredStores(), _showStoreDetails),
+                );
+              },
+              icon: const Icon(Icons.search, color: Colors.white),
+              tooltip: 'البحث في المتاجر',
             ),
-            tooltip: 'Toggle Traffic',
-          ),
-          IconButton(
-            onPressed: _getCurrentLocation,
-            icon: _isLoadingLocation 
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2,
+            PopupMenuButton<int>(
+              onSelected: (floor) {
+                setState(() {
+                  _currentFloor = floor;
+                });
+              },
+              icon: const Icon(Icons.layers, color: Colors.white),
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 1,
+                  child: Row(
+                    children: [
+                      Icon(Icons.store),
+                      SizedBox(width: 8),
+                      Text('الدور الأول'),
+                    ],
                   ),
-                )
-              : const Icon(Icons.my_location, color: Colors.white),
-            tooltip: 'My Location',
-          ),
+                ),
+                const PopupMenuItem(
+                  value: 2,
+                  child: Row(
+                    children: [
+                      Icon(Icons.restaurant),
+                      SizedBox(width: 8),
+                      Text('الدور الثاني'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 3,
+                  child: Row(
+                    children: [
+                      Icon(Icons.spa),
+                      SizedBox(width: 8),
+                      Text('الدور الثالث'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
-      body: Stack(
-        children: [
-          // Google Map
-          GoogleMap(
-            onMapCreated: (GoogleMapController controller) {
-              _mapController = controller;
-              if (_currentLocation != null) {
-                _createMarkers();
+      body: _isQRScannerOpen
+          ? _buildQRScanner()
+          : _currentFloor == null
+              ? _buildWelcomeScreen()
+              : _buildFloorMap(),
+      floatingActionButton: _currentFloor == null
+          ? FloatingActionButton.extended(
+              onPressed: _scanQRCode,
+              backgroundColor: const Color(0xFF87CEEB),
+              icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+              label:
+                  const Text('مسح QR', style: TextStyle(color: Colors.white)),
+            )
+          : FloatingActionButton(
+              onPressed: () {
+                setState(() {
+                  _currentFloor = null;
+                });
+              },
+              backgroundColor: const Color(0xFF87CEEB),
+              child: const Icon(Icons.exit_to_app, color: Colors.white),
+            ),
+    );
+  }
+
+  // الويدجت الجديد بتاع mobile_scanner
+  Widget _buildQRScanner() {
+    return Column(
+      children: [
+        Expanded(
+          flex: 4,
+          child: MobileScanner(
+            controller: _scannerController,
+            onDetect: (BarcodeCapture barcodeCapture) {
+              final List<Barcode> barcodes = barcodeCapture.barcodes;
+              for (final barcode in barcodes) {
+                if (barcode.rawValue != null) {
+                  _processQRCode(barcode.rawValue!);
+                  break;
+                }
               }
             },
-            initialCameraPosition: const CameraPosition(
-              target: _cairoMallLocation,
-              zoom: 16,
-            ),
-            markers: _markers,
-            polylines: _polylines,
-            trafficEnabled: _showTrafficLayer,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            onTap: (LatLng position) {
-              // Removed setState since _selectedPlace is no longer used
-            },
           ),
-          
-          
-          // Traffic status indicator
-          Positioned(
-            top: 10,
-            left: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+        Expanded(
+          flex: 1,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                const Text(
+                  'امسح رمز QR الموجود عند مدخل كل دور',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _isQRScannerOpen = false;
+                    });
+                    _scannerController?.dispose();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey,
+                  ),
+                  child: const Text('إلغاء',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWelcomeScreen() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: const Color(0xFF87CEEB),
+                borderRadius: BorderRadius.circular(60),
+              ),
+              child: const Icon(
+                Icons.location_city,
+                size: 60,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 30),
+            const Text(
+              'مرحباً بكم في سيتي ستارز مول',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2E7D9A),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 15),
+            const Text(
+              'للبدء في التنقل، امسح رمز QR الموجود عند مدخل كل دور',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 30),
+            Container(
+              padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
+                    blurRadius: 5,
+                    offset: const Offset(0, 3),
                   ),
                 ],
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+              child: const Column(
                 children: [
-                  Icon(
-                    Icons.traffic,
-                    size: 16,
-                    color: _showTrafficLayer ? Colors.green : Colors.grey,
+                  Row(
+                    children: [
+                      Text('🛍️', style: TextStyle(fontSize: 20)),
+                      SizedBox(width: 10),
+                      Text(
+                        'الدور الأول: الأزياء والإلكترونيات',
+                        style: TextStyle(color: Colors.black, fontSize: 16),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _showTrafficLayer ? 'Traffic: Light' : 'Traffic: OFF',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: _showTrafficLayer ? Colors.green : Colors.grey,
-                    ),
+                  SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text('🍔', style: TextStyle(fontSize: 20)),
+                      SizedBox(width: 10),
+                      Text(
+                        'الدور الثاني: المطاعم والترفيه',
+                        style: TextStyle(color: Colors.black, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text('💊', style: TextStyle(fontSize: 20)),
+                      SizedBox(width: 10),
+                      Text(
+                        'الدور الثالث: الجمال والصحة',
+                        style: TextStyle(color: Colors.black, fontSize: 16),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ),
-
-          // Location accuracy indicator
-          if (_currentLocation != null)
-            Positioned(
-              top: 60,
-              left: 10,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+            const SizedBox(height: 40),
+            // Demo buttons for testing without QR scanner
+            if (kDebugMode) ...[
+              const Text(
+                'أزرار تجريبية للاختبار:',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: () =>
+                        _processQRCode('CITYSTARS_FLOOR_1_ENTRANCE'),
+                    style:
+                        ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                    child: const Text('دور 1',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                  ElevatedButton(
+                    onPressed: () =>
+                        _processQRCode('CITYSTARS_FLOOR_2_ENTRANCE'),
+                    style:
+                        ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                    child: const Text('دور 2',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                  ElevatedButton(
+                    onPressed: () =>
+                        _processQRCode('CITYSTARS_FLOOR_3_ENTRANCE'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange),
+                    child: const Text('دور 3',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloorMap() {
+    final floorData = _floorPlans[_currentFloor]!;
+
+    return Column(
+      children: [
+        // Floor info header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(15),
+          margin: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 5,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: const Color(0xFF87CEEB),
+                child: Text(
+                  '${floorData.floorNumber}',
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.location_on,
-                      size: 16,
-                      color: _getAccuracyColor(_currentLocation!.accuracy ?? 0),
-                    ),
-                    const SizedBox(width: 6),
                     Text(
-                      '±${_currentLocation!.accuracy?.toStringAsFixed(0) ?? "?"} m',
+                      floorData.floorName,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D9A),
+                      ),
+                    ),
+                    Text(
+                      '${floorData.stores.length} متجر متاح',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: _getAccuracyColor(_currentLocation!.accuracy ?? 0),
+                        color: Colors.grey[600],
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          
-          // Places list button
-          Positioned(
-            bottom: 20,
-            left: 20,
-            child: FloatingActionButton(
-              onPressed: _showPlacesList,
-              backgroundColor: const Color(0xFF87CEEB),
-              tooltip: 'Show Places',
-              child: const Icon(Icons.list, color: Colors.white),
-            ),
+            ],
           ),
-          
-          // Clear routes button (when routes are shown)
-          if (_polylines.isNotEmpty)
-            Positioned(
-              bottom: 20,
-              right: 20,
-              child: FloatingActionButton(
-                onPressed: () {
-                  setState(() {
-                    _polylines.clear();
-                  });
-                },
-                backgroundColor: Colors.red,
-                mini: true,
-                tooltip: 'Clear Routes',
-                child: const Icon(Icons.clear, color: Colors.white),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+        ),
 
-  void _showPlacesList() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.3,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
+        // Interactive floor map
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 5,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: CustomPaint(
+              painter: FloorMapPainter(floorData, _selectedStore),
+              child: GestureDetector(
+                onTapDown: (details) {
+                  final RenderBox renderBox =
+                      context.findRenderObject() as RenderBox;
+                  final localOffset =
+                      renderBox.globalToLocal(details.globalPosition);
+                  _handleMapTap(localOffset, floorData);
+                },
+                child: Container(
+                  width: double.infinity,
+                  height: double.infinity,
                 ),
               ),
-              child: Column(
-                children: [
-                  // Handle bar
-                  Container(
-                    margin: const EdgeInsets.only(top: 10, bottom: 10),
-                    width: 50,
-                    height: 4,
+            ),
+          ),
+        ),
+
+        // Stores list at bottom
+        Container(
+          height: 120,
+          margin: const EdgeInsets.all(10),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: floorData.stores.length,
+            itemBuilder: (context, index) {
+              final store = floorData.stores.values.elementAt(index);
+              final isSelected = _selectedStore?.name == store.name;
+
+              return Container(
+                width: 120,
+                margin: const EdgeInsets.only(right: 10),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedStore = isSelected ? null : store;
+                    });
+                  },
+                  child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
+                      color:
+                          isSelected ? const Color(0xFF87CEEB) : Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF87CEEB)
+                            : Colors.grey.shade300,
+                      ),
                     ),
-                  ),
-                  
-                  // Header
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Row(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.store, color: Color(0xFF87CEEB)),
-                        SizedBox(width: 10),
                         Text(
-                          'Mall Places',
+                          store.emoji,
+                          style: const TextStyle(fontSize: 24),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          store.name,
                           style: TextStyle(
-                            fontSize: 20,
+                            fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF2E7D9A),
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF2E7D9A),
                           ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          store.category,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color:
+                                isSelected ? Colors.white70 : Colors.grey[600],
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                  
-                  // Places list
-                  Expanded(
-                    child: ListView.builder(
-                      controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _mallPlaces.length,
-                      itemBuilder: (context, index) {
-                        final place = _mallPlaces.values.elementAt(index);
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: ListTile(
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF87CEEB),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(place.emoji, style: const TextStyle(fontSize: 20)),
-                            ),
-                            title: Text(
-                              place.name,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: Text(place.category),
-                            trailing: const Icon(Icons.directions, color: Color(0xFF87CEEB)),
-                            onTap: () {
-                              Navigator.pop(context);
-                              _onMarkerTapped(place);
-                              _mapController?.animateCamera(
-                                CameraUpdate.newLatLngZoom(place.position, 18),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _handleMapTap(Offset tapPosition, FloorData floorData) {
+    for (final store in floorData.stores.values) {
+      final distance = (tapPosition - store.position).distance;
+      if (distance < 30) {
+        // 30 pixels touch radius
+        _showStoreDetails(store);
+        setState(() {
+          _selectedStore = store;
+        });
+        return;
+      }
+    }
+
+    // Deselect if tapping empty area
+    setState(() {
+      _selectedStore = null;
+    });
+  }
+
+  @override
+  void dispose() {
+    _scannerController?.dispose(); // بدل _qrController?.dispose()
+    super.dispose();
+  }
+}
+
+class FloorMapPainter extends CustomPainter {
+  final FloorData floorData;
+  final MallStore? selectedStore;
+
+  FloorMapPainter(this.floorData, this.selectedStore);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+
+    // Draw floor background
+    paint.color = const Color(0xFFF5F5F5);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+
+    // Draw floor outline
+    paint.color = Colors.grey.shade300;
+    paint.style = PaintingStyle.stroke;
+    paint.strokeWidth = 2;
+    canvas.drawRect(
+      Rect.fromLTWH(20, 20, size.width - 40, size.height - 40),
+      paint,
+    );
+
+    // Draw walkways
+    paint.color = Colors.grey.shade200;
+    paint.style = PaintingStyle.fill;
+
+    // Main horizontal walkway
+    canvas.drawRect(
+      Rect.fromLTWH(50, size.height * 0.4, size.width - 100, 60),
+      paint,
+    );
+
+    // Vertical walkways
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.2, 50, 60, size.height - 100),
+      paint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.7, 50, 60, size.height - 100),
+      paint,
+    );
+
+    // Draw amenities
+    for (final entry in floorData.amenities.entries) {
+      final amenityName = entry.key;
+      final position = entry.value;
+
+      paint.color = Colors.grey.shade400;
+      paint.style = PaintingStyle.fill;
+
+      // Scale position to canvas size
+      final scaledX = (position.dx / 400) * size.width;
+      final scaledY = (position.dy / 350) * size.height;
+
+      canvas.drawCircle(Offset(scaledX, scaledY), 15, paint);
+
+      // Draw amenity icon
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: _getAmenityIcon(amenityName),
+          style: const TextStyle(fontSize: 16, color: Colors.black),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(
+            scaledX - textPainter.width / 2, scaledY - textPainter.height / 2),
+      );
+    }
+
+    // Draw stores
+    for (final store in floorData.stores.values) {
+      final isSelected = selectedStore?.name == store.name;
+
+      // Scale position to canvas size
+      final scaledX = (store.position.dx / 400) * size.width;
+      final scaledY = (store.position.dy / 350) * size.height;
+
+      // Draw store background
+      paint.color = isSelected ? const Color(0xFF87CEEB) : Colors.white;
+      paint.style = PaintingStyle.fill;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+              center: Offset(scaledX, scaledY), width: 80, height: 60),
+          const Radius.circular(8),
+        ),
+        paint,
+      );
+
+      // Draw store border
+      paint.color = isSelected ? const Color(0xFF2E7D9A) : Colors.grey.shade400;
+      paint.style = PaintingStyle.stroke;
+      paint.strokeWidth = isSelected ? 3 : 1;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+              center: Offset(scaledX, scaledY), width: 80, height: 60),
+          const Radius.circular(8),
+        ),
+        paint,
+      );
+
+      // Draw store emoji
+      final emojiPainter = TextPainter(
+        text: TextSpan(
+          text: store.emoji,
+          style: const TextStyle(fontSize: 20),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      emojiPainter.layout();
+      emojiPainter.paint(
+        canvas,
+        Offset(scaledX - emojiPainter.width / 2, scaledY - 15),
+      );
+
+      // Draw store name
+      final namePainter = TextPainter(
+        text: TextSpan(
+          text: store.name.length > 8
+              ? '${store.name.substring(0, 8)}...'
+              : store.name,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : const Color(0xFF2E7D9A),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      namePainter.layout();
+      namePainter.paint(
+        canvas,
+        Offset(scaledX - namePainter.width / 2, scaledY + 5),
+      );
+    }
+
+    // Draw path if a store is selected
+    if (selectedStore != null) {
+      paint.color = const Color(0xFF87CEEB);
+      paint.style = PaintingStyle.stroke;
+      paint.strokeWidth = 3;
+
+      final startX = size.width * 0.1;
+      final startY = size.height * 0.9;
+      final endX = (selectedStore!.position.dx / 400) * size.width;
+      final endY = (selectedStore!.position.dy / 350) * size.height;
+
+      // Draw dashed line path
+      _drawDashedLine(
+          canvas, Offset(startX, startY), Offset(endX, endY), paint);
+
+      // Draw "You are here" marker
+      paint.color = Colors.red;
+      paint.style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(startX, startY), 8, paint);
+
+      final youAreHerePainter = TextPainter(
+        text: const TextSpan(
+          text: 'أنت هنا',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.red,
+          ),
+        ),
+        textDirection: TextDirection.rtl,
+      );
+      youAreHerePainter.layout();
+      youAreHerePainter.paint(
+        canvas,
+        Offset(startX - youAreHerePainter.width / 2, startY + 15),
+      );
+    }
+  }
+
+  String _getAmenityIcon(String amenityName) {
+    switch (amenityName) {
+      case 'ATM':
+        return '🏧';
+      case 'Restroom':
+        return '🚻';
+      case 'Information':
+        return 'ℹ️';
+      case 'Elevator':
+        return '🛗';
+      case 'Escalator':
+        return '🔼';
+      case 'Food Court':
+        return '🍽️';
+      default:
+        return '📍';
+    }
+  }
+
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
+    const dashWidth = 5.0;
+    const dashSpace = 3.0;
+
+    final distance = (end - start).distance;
+    final dashCount = (distance / (dashWidth + dashSpace)).floor();
+
+    for (int i = 0; i < dashCount; i++) {
+      final startPercent = (i * (dashWidth + dashSpace)) / distance;
+      final endPercent = ((i * (dashWidth + dashSpace)) + dashWidth) / distance;
+
+      final dashStart = Offset(
+        start.dx + (end.dx - start.dx) * startPercent,
+        start.dy + (end.dy - start.dy) * startPercent,
+      );
+
+      final dashEnd = Offset(
+        start.dx + (end.dx - start.dx) * endPercent,
+        start.dy + (end.dy - start.dy) * endPercent,
+      );
+
+      canvas.drawLine(dashStart, dashEnd, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+class StoreSearchDelegate extends SearchDelegate<MallStore?> {
+  final List<MallStore> stores;
+  final Function(MallStore) onStoreSelected;
+
+  StoreSearchDelegate(this.stores, this.onStoreSelected);
+
+  @override
+  String get searchFieldLabel => 'البحث في المتاجر...';
+
+  @override
+  List<Widget> buildActions(BuildContext context) {
+    return [
+      IconButton(
+        onPressed: () {
+          query = '';
+        },
+        icon: const Icon(Icons.clear),
+      ),
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      onPressed: () {
+        close(context, null);
+      },
+      icon: const Icon(Icons.arrow_back),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    return _buildStoresList(context);
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    return _buildStoresList(context);
+  }
+
+  Widget _buildStoresList(BuildContext context) {
+    final filteredStores = stores
+        .where((store) =>
+            store.name.toLowerCase().contains(query.toLowerCase()) ||
+            store.category.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+
+    return ListView.builder(
+      itemCount: filteredStores.length,
+      itemBuilder: (context, index) {
+        final store = filteredStores[index];
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: const Color(0xFF87CEEB),
+            child: Text(store.emoji, style: const TextStyle(fontSize: 16)),
+          ),
+          title: Text(store.name),
+          subtitle: Text(store.category),
+          onTap: () {
+            close(context, store);
+            onStoreSelected(store);
           },
         );
       },
     );
   }
-
-  Color _getAccuracyColor(double accuracy) {
-    if (accuracy <= 10) return Colors.green;
-    if (accuracy <= 50) return Colors.orange;
-    return Colors.red;
-  }
-
-  @override
-  void dispose() {
-    _mapController?.dispose();
-    super.dispose();
-  }
 }
 
-class MallPlace {
+class FloorData {
+  final int floorNumber;
+  final String floorName;
+  final Map<String, MallStore> stores;
+  final Map<String, Offset> amenities;
+
+  FloorData({
+    required this.floorNumber,
+    required this.floorName,
+    required this.stores,
+    required this.amenities,
+  });
+}
+
+class MallStore {
   final String name;
-  final LatLng position;
+  final Offset position;
   final String category;
   final String emoji;
   final String description;
+  final int floorNumber;
 
-  MallPlace({
+  MallStore({
     required this.name,
     required this.position,
     required this.category,
     required this.emoji,
     required this.description,
+    required this.floorNumber,
   });
 }

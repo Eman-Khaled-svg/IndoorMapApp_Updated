@@ -17,8 +17,6 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   bool _allowPersonalizedAds = true;
   bool _shareLocationData = false;
   bool _allowAnalytics = true;
-  bool _profileVisibility = true;
-  bool _showOnlineStatus = false;
 
   @override
   Widget build(BuildContext context) {
@@ -86,26 +84,6 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                     _allowAnalytics,
                     (value) => setState(() => _allowAnalytics = value),
                     Icons.analytics,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildPrivacySection(
-                'الملف الشخصي',
-                [
-                  _buildPrivacyOption(
-                    'إظهار الملف الشخصي للآخرين',
-                    'السماح للمستخدمين الآخرين برؤية ملفك الشخصي',
-                    _profileVisibility,
-                    (value) => setState(() => _profileVisibility = value),
-                    Icons.visibility,
-                  ),
-                  _buildPrivacyOption(
-                    'إظهار حالة الاتصال',
-                    'السماح للآخرين برؤية ما إذا كنت متصلاً',
-                    _showOnlineStatus,
-                    (value) => setState(() => _showOnlineStatus = value),
-                    Icons.circle,
                   ),
                 ],
               ),
@@ -253,8 +231,6 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 _allowPersonalizedAds = false;
                 _shareLocationData = false;
                 _allowAnalytics = false;
-                _profileVisibility = false;
-                _showOnlineStatus = false;
               });
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
