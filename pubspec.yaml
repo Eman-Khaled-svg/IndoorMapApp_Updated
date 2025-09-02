@@ -3,7 +3,7 @@ description: A Flutter application with Google Maps and routing.
 
 publish_to: 'none'
 
-version: "3.19.0
+version: "3.19.0"
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -21,7 +21,6 @@ dependencies:
   location: ^8.0.1
   flutter_map: ^6.1.0
   latlong2: ^0.9.0
-
   geolocator: ^10.1.0
   flutter_polyline_points: ^3.0.1
   flutter_dotenv: ^5.1.0
@@ -42,6 +41,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: "^0.13.1"
+
 
 flutter:
   generate: true
@@ -53,3 +54,8 @@ flutter:
 
 flutter_intl:
   enabled: true
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo.png"
