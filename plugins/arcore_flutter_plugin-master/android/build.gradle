@@ -25,8 +25,9 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
+    namespace "com.example.arcore_flutter_plugin"
     compileSdk 34
-
+    
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
