@@ -28,8 +28,15 @@ dependencies:
   path: ^1.8.3
   font_awesome_flutter: ^10.7.0
   # qr_code_scanner: ^1.0.1
-  mobile_scanner: ^6.0.2
-
+  mobile_scanner: ^3.5.6
+  
+  # AR Core for real augmented reality
+  arcore_flutter_plugin: 0.1.0
+  
+  # Vector math for 3D calculations
+  vector_math: ^2.1.4  
+  # Permissions
+  permission_handler: ^11.0.1
   # حزم أساسية
   cupertino_icons: ^1.0.2
   intl: ^0.20.2

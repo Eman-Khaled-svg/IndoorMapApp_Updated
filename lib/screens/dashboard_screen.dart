@@ -167,7 +167,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) =>
-                          ExploreLocationScreen(userName: widget.name),
+                          CityStarsARNavigationScreen(userName: widget.name),
                     ),
                   );
                 },
