@@ -31,7 +31,8 @@ dependencies:
   mobile_scanner: ^3.5.6
   
   # AR Core for real augmented reality
-  arcore_flutter_plugin: 0.1.0
+  arcore_flutter_plugin:
+    path: ./plugins/arcore_flutter_plugin-master
   
   # Vector math for 3D calculations
   vector_math: ^2.1.4  
