@@ -31,11 +31,11 @@ android {
     }
 
     buildTypes {
-        release {
-           signingConfig signingConfigs.debug
-           minifyEnabled false     // خلي دي false
-           shrinkResources false   // أضف السطر ده
-        }
+         release {
+        signingConfig = signingConfigs.getByName("debug")
+        isMinifyEnabled = false
+        isShrinkResources = false
+    }
     }
 }
 
