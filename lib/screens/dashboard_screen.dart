@@ -88,7 +88,7 @@ class DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
         ),
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,21 +157,23 @@ class DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 30),
 
               // main section
-              _buildMainServiceCard(
-                context: context,
-                icon: Icons.explore,
-                title: 'اكتشف موقعك الحالي',
-                subtitle: 'الخريطة • البحث • التوجيهات • معلومات الزحمة',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          CityStarsARNavigationScreen(userName: widget.name),
-                    ),
-                  );
-                },
-              ),
+             _buildMainServiceCard(
+  context: context,
+  icon: Icons.explore,
+  title: 'اكتشف موقعك الحالي',
+  subtitle: 'الخريطة • البحث • التوجيهات',
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EnhancedFloorMapScreen(
+          userName: widget.name,
+          floorId: "floor1",
+        ),
+      ),
+    );
+  },
+),
               const SizedBox(height: 30),
 
               // services section
@@ -185,71 +187,73 @@ class DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 20),
 
-              // history
-              Expanded(
-                child: GridView.count(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 15,
-                  mainAxisSpacing: 15,
-                  childAspectRatio: 0.8,
-                  children: [
-                    _buildServiceCard(
-                      context: context,
-                      icon: Icons.history,
-                      title: 'سجل الرحلات',
-                      subtitle: 'عرض رحلاتك السابقة',
-                      color: const Color(0xFF4CAF50),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => TripHistoryScreen()),
-                        );
-                      },
-                    ),
-                    _buildServiceCard(
-                      context: context,
-                      icon: Icons.favorite,
-                      title: 'الأماكن المفضلة',
-                      subtitle: 'احفظ أماكنك المفضلة',
-                      color: const Color(0xFFE91E63),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => FavoritePlacesScreen()),
-                        );
-                      },
-                    ),
-                    _buildServiceCard(
-                      context: context,
-                      icon: Icons.help,
-                      title: 'المساعدة',
-                      subtitle: 'دليل الاستخدام',
-                      color: const Color(0xFF9C27B0),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => HelpScreen()),
-                        );
-                      },
-                    ),
-                     _buildServiceCard(
-                      context: context,
-                      icon: Icons.sell,
-                      title: 'العروض',
-                      subtitle: 'عروض خاصة للمستخدمين',
-                      color: const Color.fromARGB(255, 24, 11, 162),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => OffersScreen()),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+              // Grid View for services - بدون Expanded
+              GridView.count(
+                shrinkWrap: true, // مهم جداً عشان ياخد المساحة المطلوبة بس
+                physics:
+                    const NeverScrollableScrollPhysics(), // عشان ميعملش scroll منفصل
+                crossAxisCount: 2,
+                crossAxisSpacing: 15,
+                mainAxisSpacing: 15,
+                childAspectRatio: 0.8,
+                children: [
+                  _buildServiceCard(
+                    context: context,
+                    icon: Icons.history,
+                    title: 'سجل الرحلات',
+                    subtitle: 'عرض رحلاتك السابقة',
+                    color: const Color(0xFF4CAF50),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => TripHistoryScreen()),
+                      );
+                    },
+                  ),
+                  _buildServiceCard(
+                    context: context,
+                    icon: Icons.favorite,
+                    title: 'الأماكن المفضلة',
+                    subtitle: 'احفظ أماكنك المفضلة',
+                    color: const Color(0xFFE91E63),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => FavoritePlacesScreen()),
+                      );
+                    },
+                  ),
+                  _buildServiceCard(
+                    context: context,
+                    icon: Icons.help,
+                    title: 'المساعدة',
+                    subtitle: 'دليل الاستخدام',
+                    color: const Color(0xFF9C27B0),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => HelpScreen()),
+                      );
+                    },
+                  ),
+                  _buildServiceCard(
+                    context: context,
+                    icon: Icons.sell,
+                    title: 'العروض',
+                    subtitle: 'عروض خاصة للمستخدمين',
+                    color: const Color.fromARGB(255, 24, 11, 162),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => OffersScreen()),
+                      );
+                    },
+                  ),
+                ],
               ),
+              const SizedBox(height: 20), // مساحة إضافية في الآخر
             ],
           ),
         ),

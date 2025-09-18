@@ -33,6 +33,7 @@ dependencies:
   # AR Core for real augmented reality
   arcore_flutter_plugin:
     path: ./plugins/arcore_flutter_plugin-master
+  camera: ^0.10.5+5
   
   # Vector math for 3D calculations
   vector_math: ^2.1.4  
