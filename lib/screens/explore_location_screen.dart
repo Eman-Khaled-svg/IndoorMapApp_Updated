@@ -23,11 +23,18 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
   String? selectedShop;
   bool isNavigating = false;
   Set<String> favoriteShops = {};
+  Offset? targetPosition;
+  Offset legendOffset = Offset.zero;
   
   late AnimationController _pulseController;
   late AnimationController _pathController;
+  late AnimationController _navigationPanelController;
   late Animation<double> _pulseAnimation;
   late Animation<double> _pathAnimation;
+  late Animation<Offset> _navigationSlideAnimation;
+
+  // ScrollController للتحكم في الاسكرول
+  late ScrollController _scrollController;
 
   // موقع المستخدم (افتراضي بالقرب من المدخل) - نسبي
   Offset userPosition = const Offset(0.5, 0.9); // نسب مئوية
@@ -36,11 +43,26 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
   Timer? _crowdUpdateTimer;
   DateTime lastUpdateTime = DateTime.now();
 
+  // عناصر قائمة المفاتيح
+  List<Map<String, dynamic>> get legendItems => [
+    {"type": "user", "color": const Color(0xFF4facfe), "text": "موقعك الحالي"},
+    {"type": "shop_open", "color": const Color(0xFF00D084), "text": "متجر مفتوح"},
+    {"type": "shop_closed", "color": const Color(0xFF636E72), "text": "متجر مغلق"},
+    {"type": "facility", "color": const Color(0xFF6c5ce7), "text": "مرافق عامة"},
+    {"type": "favorite", "color": const Color(0xFFE84142), "text": "متجر مفضل"},
+    {"type": "crowd_light", "color": const Color(0xFF00D084), "text": "ازدحام خفيف"},
+    {"type": "crowd_medium", "color": const Color(0xFFFFB800), "text": "ازدحام متوسط"},
+    {"type": "crowd_heavy", "color": const Color(0xFFE84142), "text": "ازدحام كثيف"},
+    {"type": "walkway", "color": Colors.white, "text": "ممرات"},
+    {"type": "selected", "color": const Color(0xFF4facfe), "text": "عنصر محدد"},
+  ];
+
   @override
   void initState() {
     super.initState();
     _initAnimations();
     _startCrowdUpdates();
+    _scrollController = ScrollController();
   }
 
   void _initAnimations() {
@@ -51,6 +73,11 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
     
     _pathController = AnimationController(
       duration: const Duration(seconds: 3),
+      vsync: this,
+    );
+    
+    _navigationPanelController = AnimationController(
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     );
     
@@ -69,6 +96,14 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
       parent: _pathController,
       curve: Curves.easeInOut,
     ));
+
+    _navigationSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: const Offset(0, 0),
+    ).animate(CurvedAnimation(
+      parent: _navigationPanelController,
+      curve: Curves.elasticOut,
+    ));
   }
 
   // بدء نظام التحديث الديناميكي
@@ -84,7 +119,6 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
     final currentHour = DateTime.now().hour;
     
     setState(() {
-      // تحديث الازدحام بناءً على الوقت والعشوائية
       for (String floorKey in floorData.keys) {
         final shops = floorData[floorKey]!["shops"] as List;
         final facilities = floorData[floorKey]!["facilities"] as List;
@@ -97,8 +131,6 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
             shop["name"]
           );
           shop["crowdLevel"] = newCrowdLevel;
-          
-          // تحديث حالة المتاجر (مفتوح/مغلق) حسب الوقت
           shop["isOpen"] = _isShopOpen(shop["name"], currentHour);
         }
         
@@ -116,24 +148,20 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
       lastUpdateTime = DateTime.now();
     });
     
-    // إشعار بالتحديث
     _showCrowdUpdateNotification();
   }
 
-  // حساب مستوى الازدحام بناءً على عوامل مختلفة
   String _calculateDynamicCrowdLevel(String category, int hour, math.Random random, String name) {
     double crowdFactor = 0.0;
     
-    // عوامل الوقت
     if (hour >= 18 && hour <= 22) {
-      crowdFactor += 0.4; // أوقات الذروة المسائية
+      crowdFactor += 0.4;
     } else if (hour >= 12 && hour <= 15) {
-      crowdFactor += 0.3; // وقت الغداء
+      crowdFactor += 0.3;
     } else if (hour >= 10 && hour <= 12) {
-      crowdFactor += 0.2; // صباح نهاية الأسبوع
+      crowdFactor += 0.2;
     }
     
-    // عوامل نوع المتجر/المرفق
     switch (category) {
       case "مطاعم سريعة":
       case "مطاعم":
@@ -153,7 +181,6 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
         crowdFactor += 0.1;
         break;
       case "مرافق":
-        // المصاعد والحمامات
         if (name.contains("مصعد")) {
           crowdFactor += (hour >= 18 && hour <= 21) ? 0.4 : 0.2;
         } else if (name.contains("حمام")) {
@@ -162,10 +189,8 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
         break;
     }
     
-    // عامل عشوائي للتنويع
     crowdFactor += (random.nextDouble() - 0.5) * 0.3;
     
-    // تحديد مستوى الازدحام
     if (crowdFactor < 0.25) {
       return "خفيف";
     } else if (crowdFactor < 0.6) {
@@ -175,14 +200,12 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
     }
   }
 
-  // تحديد ما إذا كان المتجر مفتوح
   bool _isShopOpen(String shopName, int hour) {
-    // قواعد أوقات العمل
     Map<String, Map<String, int>> openingHours = {
-      "ماكدونالدز": {"open": 0, "close": 24}, // 24 ساعة
-      "بنك مصر ATM": {"open": 0, "close": 24}, // 24 ساعة
+      "ماكدونالدز": {"open": 0, "close": 24},
+      "بنك مصر ATM": {"open": 0, "close": 24},
       "Starbucks": {"open": 7, "close": 24},
-      "KFC": {"open": 11, "close": 2}, // حتى 2 صباحاً
+      "KFC": {"open": 11, "close": 2},
       "سينما مصر": {"open": 10, "close": 2},
       "صالة البولينج": {"open": 14, "close": 2},
       "ملعب بلاي ستيشن": {"open": 14, "close": 2},
@@ -195,34 +218,51 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
       int closeTime = openingHours[shopName]!["close"]!;
       
       if (closeTime <= openTime) {
-        // يعمل بعد منتصف الليل
         return hour >= openTime || hour < closeTime;
       } else {
         return hour >= openTime && hour < closeTime;
       }
     }
     
-    // أوقات افتراضية للمتاجر العادية (10 ص - 11 م)
     return hour >= 10 && hour < 23;
   }
 
   void _showCrowdUpdateNotification() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.update, color: Colors.white),
-            const SizedBox(width: 10),
-            Text(
-              "تم تحديث حالة الازدحام - ${_formatTime(lastUpdateTime)}",
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
+        content: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.update, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "تم تحديث حالة الازدحام - ${_formatTime(lastUpdateTime)}",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        backgroundColor: const Color(0xFF87CEEB),
+        backgroundColor: const Color(0xFF4facfe),
         duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        margin: const EdgeInsets.all(16),
       ),
     );
   }
@@ -231,7 +271,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
     return "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
   }
 
-  // بيانات الأدوار مع معلومات الازدحام وحالة التشغيل والمفضلة - استخدام إحداثيات نسبية
+  // بيانات الأدوار مع تحسينات
   final Map<String, Map<String, dynamic>> floorData = {
     "floor1": {
       "name": "الدور الأرضي",
@@ -241,7 +281,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "رياضة",
           "position": const Offset(0.075, 0.214),
           "size": const Size(0.15, 0.114),
-          "color": Colors.orange,
+          "color": const Color(0xFFFF6B35), // برتقالي حديث
           "icon": Icons.sports_soccer,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -252,7 +292,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "أزياء نساء",
           "position": const Offset(0.275, 0.214),
           "size": const Size(0.175, 0.114),
-          "color": Colors.blue,
+          "color": const Color(0xFF6C5CE7), // بنفسجي حديث
           "icon": Icons.checkroom,
           "isOpen": true,
           "crowdLevel": "مزدحم",
@@ -263,7 +303,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "رياضة",
           "position": const Offset(0.5, 0.214),
           "size": const Size(0.15, 0.114),
-          "color": Colors.green,
+          "color": const Color(0xFF00D084), // أخضر حديث
           "icon": Icons.sports_tennis,
           "isOpen": false,
           "crowdLevel": "خفيف",
@@ -274,7 +314,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "تكنولوجيا",
           "position": const Offset(0.7, 0.214),
           "size": const Size(0.1625, 0.114),
-          "color": Colors.grey.shade800,
+          "color": const Color(0xFF2D3436), // رمادي داكن حديث
           "icon": Icons.phone_iphone,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -285,7 +325,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "مطاعم سريعة",
           "position": const Offset(0.075, 0.4),
           "size": const Size(0.175, 0.129),
-          "color": Colors.red.shade600,
+          "color": const Color(0xFFE84142),
           "icon": Icons.fastfood,
           "isOpen": true,
           "crowdLevel": "مزدحم",
@@ -296,7 +336,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "تسوق",
           "position": const Offset(0.3, 0.4),
           "size": const Size(0.2, 0.129),
-          "color": Colors.blue.shade700,
+          "color": const Color(0xFF0984e3),
           "icon": Icons.shopping_cart,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -307,7 +347,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "صيدلية",
           "position": const Offset(0.55, 0.4),
           "size": const Size(0.15, 0.129),
-          "color": Colors.green.shade600,
+          "color": const Color(0xFF00D084),
           "icon": Icons.local_pharmacy,
           "isOpen": true,
           "crowdLevel": "خفيف",
@@ -318,7 +358,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "خدمات مصرفية",
           "position": const Offset(0.75, 0.4),
           "size": const Size(0.125, 0.129),
-          "color": Colors.indigo.shade700,
+          "color": const Color(0xFF3742fa),
           "icon": Icons.atm,
           "isOpen": true,
           "crowdLevel": "خفيف",
@@ -329,7 +369,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "اتصالات",
           "position": const Offset(0.075, 0.6),
           "size": const Size(0.1375, 0.114),
-          "color": Colors.orange.shade700,
+          "color": const Color(0xFFFF6B35),
           "icon": Icons.phone,
           "isOpen": false,
           "crowdLevel": "خفيف",
@@ -340,7 +380,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "اتصالات",
           "position": const Offset(0.25, 0.6),
           "size": const Size(0.1375, 0.114),
-          "color": Colors.red.shade700,
+          "color": const Color(0xFFE84142),
           "icon": Icons.signal_cellular_alt,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -352,7 +392,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "مصعد 1",
           "position": const Offset(0.4375, 0.714),
           "icon": Icons.elevator,
-          "color": Colors.grey.shade600,
+          "color": const Color(0xFF636E72),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -360,7 +400,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "مصعد 2", 
           "position": const Offset(0.5625, 0.714),
           "icon": Icons.elevator,
-          "color": Colors.grey.shade600,
+          "color": const Color(0xFF636E72),
           "isOpen": true,
           "crowdLevel": "متوسط",
         },
@@ -368,7 +408,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "حمامات رجال",
           "position": const Offset(0.75, 0.6),
           "icon": Icons.man,
-          "color": Colors.blue.shade400,
+          "color": const Color(0xFF0984e3),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -376,7 +416,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "حمامات نساء",
           "position": const Offset(0.8125, 0.6),
           "icon": Icons.woman,
-          "color": Colors.pink.shade400,
+          "color": const Color(0xFFfd79a8),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -384,7 +424,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "مدخل رئيسي",
           "position": const Offset(0.5, 0.929),
           "icon": Icons.door_front_door,
-          "color": Colors.brown.shade600,
+          "color": const Color(0xFF8b4513),
           "isOpen": true,
           "crowdLevel": "متوسط",
         },
@@ -392,7 +432,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "خدمة عملاء",
           "position": const Offset(0.4375, 0.6),
           "icon": Icons.help_center,
-          "color": Colors.purple.shade600,
+          "color": const Color(0xFF6c5ce7),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -400,7 +440,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "مكتب الأمن",
           "position": const Offset(0.625, 0.6),
           "icon": Icons.security,
-          "color": Colors.red.shade800,
+          "color": const Color(0xFFE84142),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -414,7 +454,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "مقاهي",
           "position": const Offset(0.075, 0.214),
           "size": const Size(0.175, 0.143),
-          "color": Colors.green.shade800,
+          "color": const Color(0xFF00b894),
           "icon": Icons.local_cafe,
           "isOpen": true,
           "crowdLevel": "مزدحم",
@@ -425,7 +465,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "أزياء",
           "position": const Offset(0.3, 0.214),
           "size": const Size(0.1625, 0.143),
-          "color": Colors.red.shade600,
+          "color": const Color(0xFFE84142),
           "icon": Icons.checkroom,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -436,7 +476,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "تجميل",
           "position": const Offset(0.5, 0.214),
           "size": const Size(0.15, 0.143),
-          "color": Colors.pink.shade600,
+          "color": const Color(0xFFfd79a8),
           "icon": Icons.face_retouching_natural,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -447,7 +487,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "أزياء",
           "position": const Offset(0.6875, 0.214),
           "size": const Size(0.1625, 0.143),
-          "color": Colors.blue.shade600,
+          "color": const Color(0xFF0984e3),
           "icon": Icons.shopping_bag,
           "isOpen": true,
           "crowdLevel": "خفيف",
@@ -458,7 +498,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "مطاعم",
           "position": const Offset(0.075, 0.429),
           "size": const Size(0.1625, 0.129),
-          "color": Colors.red.shade700,
+          "color": const Color(0xFFE84142),
           "icon": Icons.restaurant,
           "isOpen": true,
           "crowdLevel": "مزدحم",
@@ -469,7 +509,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "مطاعم",
           "position": const Offset(0.275, 0.429),
           "size": const Size(0.1625, 0.129),
-          "color": Colors.red.shade800,
+          "color": const Color(0xFFE84142),
           "icon": Icons.local_pizza,
           "isOpen": false,
           "crowdLevel": "خفيف",
@@ -480,7 +520,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "ترفيه",
           "position": const Offset(0.475, 0.429),
           "size": const Size(0.1875, 0.129),
-          "color": Colors.purple.shade700,
+          "color": const Color(0xFF6c5ce7),
           "icon": Icons.sports_esports,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -491,7 +531,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "ألعاب أطفال",
           "position": const Offset(0.7, 0.429),
           "size": const Size(0.15, 0.129),
-          "color": Colors.orange.shade600,
+          "color": const Color(0xFFFF6B35),
           "icon": Icons.toys,
           "isOpen": true,
           "crowdLevel": "خفيف",
@@ -502,7 +542,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "كتب",
           "position": const Offset(0.075, 0.629),
           "size": const Size(0.175, 0.114),
-          "color": Colors.brown.shade600,
+          "color": const Color(0xFF8b4513),
           "icon": Icons.book,
           "isOpen": true,
           "crowdLevel": "خفيف",
@@ -513,7 +553,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "هدايا",
           "position": const Offset(0.3, 0.629),
           "size": const Size(0.15, 0.114),
-          "color": Colors.teal.shade600,
+          "color": const Color(0xFF00cec9),
           "icon": Icons.card_giftcard,
           "isOpen": true,
           "crowdLevel": "خفيف",
@@ -525,7 +565,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "مصعد 1",
           "position": const Offset(0.4375, 0.714),
           "icon": Icons.elevator,
-          "color": Colors.grey.shade600,
+          "color": const Color(0xFF636E72),
           "isOpen": true,
           "crowdLevel": "متوسط",
         },
@@ -533,7 +573,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "مصعد 2",
           "position": const Offset(0.5625, 0.714),
           "icon": Icons.elevator, 
-          "color": Colors.grey.shade600,
+          "color": const Color(0xFF636E72),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -541,7 +581,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "حمامات رجال",
           "position": const Offset(0.75, 0.629),
           "icon": Icons.man,
-          "color": Colors.blue.shade400,
+          "color": const Color(0xFF0984e3),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -549,7 +589,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "حمامات نساء",
           "position": const Offset(0.8125, 0.629),
           "icon": Icons.woman,
-          "color": Colors.pink.shade400,
+          "color": const Color(0xFFfd79a8),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -557,7 +597,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "منطقة جلوس",
           "position": const Offset(0.5, 0.629),
           "icon": Icons.chair,
-          "color": Colors.brown.shade400,
+          "color": const Color(0xFF8b4513),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -565,7 +605,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "كافتيريا",
           "position": const Offset(0.625, 0.629),
           "icon": Icons.local_cafe,
-          "color": Colors.orange.shade700,
+          "color": const Color(0xFFFF6B35),
           "isOpen": true,
           "crowdLevel": "متوسط",
         },
@@ -579,7 +619,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "سينما",
           "position": const Offset(0.075, 0.171),
           "size": const Size(0.25, 0.186),
-          "color": Colors.purple.shade800,
+          "color": const Color(0xFF6c5ce7),
           "icon": Icons.movie,
           "isOpen": true,
           "crowdLevel": "مزدحم",
@@ -590,7 +630,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "ترفيه",
           "position": const Offset(0.375, 0.171),
           "size": const Size(0.225, 0.186),
-          "color": Colors.indigo.shade700,
+          "color": const Color(0xFF3742fa),
           "icon": Icons.sports_baseball,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -601,7 +641,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "ترفيه أطفال",
           "position": const Offset(0.65, 0.171),
           "size": const Size(0.2, 0.186),
-          "color": Colors.green.shade600,
+          "color": const Color(0xFF00b894),
           "icon": Icons.child_care,
           "isOpen": true,
           "crowdLevel": "مزدحم",
@@ -612,7 +652,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "مطاعم متنوعة",
           "position": const Offset(0.075, 0.414),
           "size": const Size(0.3, 0.171),
-          "color": Colors.orange.shade600,
+          "color": const Color(0xFFFF6B35),
           "icon": Icons.restaurant_menu,
           "isOpen": true,
           "crowdLevel": "مزدحم",
@@ -623,7 +663,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "مطاعم",
           "position": const Offset(0.425, 0.414),
           "size": const Size(0.15, 0.171),
-          "color": Colors.red.shade600,
+          "color": const Color(0xFFE84142),
           "icon": Icons.local_pizza,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -634,7 +674,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "مقاهي شعبية",
           "position": const Offset(0.625, 0.414),
           "size": const Size(0.1625, 0.171),
-          "color": Colors.brown.shade700,
+          "color": const Color(0xFF8b4513),
           "icon": Icons.coffee,
           "isOpen": true,
           "crowdLevel": "خفيف",
@@ -645,7 +685,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "صالة رياضية",
           "position": const Offset(0.075, 0.643),
           "size": const Size(0.2125, 0.143),
-          "color": Colors.red.shade700,
+          "color": const Color(0xFFE84142),
           "icon": Icons.fitness_center,
           "isOpen": true,
           "crowdLevel": "متوسط",
@@ -656,7 +696,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "ترفيه",
           "position": const Offset(0.3375, 0.643),
           "size": const Size(0.1875, 0.143),
-          "color": Colors.green.shade700,
+          "color": const Color(0xFF00b894),
           "icon": Icons.sports_cricket,
           "isOpen": false,
           "crowdLevel": "خفيف",
@@ -667,7 +707,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "category": "صحة وجمال",
           "position": const Offset(0.575, 0.643),
           "size": const Size(0.175, 0.143),
-          "color": Colors.teal.shade600,
+          "color": const Color(0xFF00cec9),
           "icon": Icons.spa,
           "isOpen": true,
           "crowdLevel": "خفيف",
@@ -679,7 +719,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "مصعد 1",
           "position": const Offset(0.4375, 0.829),
           "icon": Icons.elevator,
-          "color": Colors.grey.shade600,
+          "color": const Color(0xFF636E72),
           "isOpen": true,
           "crowdLevel": "متوسط",
         },
@@ -687,7 +727,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "مصعد 2",
           "position": const Offset(0.5625, 0.829),
           "icon": Icons.elevator,
-          "color": Colors.grey.shade600,
+          "color": const Color(0xFF636E72),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -695,7 +735,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "حمامات رجال",
           "position": const Offset(0.8, 0.643),
           "icon": Icons.man,
-          "color": Colors.blue.shade400,
+          "color": const Color(0xFF0984e3),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -703,7 +743,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "حمامات نساء",
           "position": const Offset(0.8625, 0.643),
           "icon": Icons.woman,
-          "color": Colors.pink.shade400,
+          "color": const Color(0xFFfd79a8),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -711,7 +751,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "تراس خارجي",
           "position": const Offset(0.8, 0.414),
           "icon": Icons.deck,
-          "color": Colors.green.shade500,
+          "color": const Color(0xFF00b894),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -719,7 +759,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "منطقة تدخين",
           "position": const Offset(0.8625, 0.414),
           "icon": Icons.smoking_rooms,
-          "color": Colors.grey.shade500,
+          "color": const Color(0xFF636E72),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -727,7 +767,7 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           "name": "صراف آلي",
           "position": const Offset(0.8, 0.829),
           "icon": Icons.atm,
-          "color": Colors.blue.shade700,
+          "color": const Color(0xFF0984e3),
           "isOpen": true,
           "crowdLevel": "خفيف",
         },
@@ -738,137 +778,237 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
   Color getCrowdColor(String crowdLevel) {
     switch (crowdLevel) {
       case "خفيف":
-        return Colors.green;
+        return const Color(0xFF00D084); // أخضر حديث
       case "متوسط":
-        return Colors.orange;
+        return const Color(0xFFFFB800); // برتقالي حديث
       case "مزدحم":
-        return Colors.red;
+        return const Color(0xFFE84142); // أحمر حديث
       default:
-        return Colors.grey;
+        return const Color(0xFF636E72);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F8FF), // Baby blue background
-      appBar: _buildAppBar(),
-      body: Column(
+      backgroundColor: const Color(0xFFF8F9FA), // خلفية حديثة
+      body: Stack(
         children: [
-          _buildFloorSelector(),
-          _buildStatusBar(),
-          _buildFavoritesButton(),
-          _buildInteractiveMap(),
-          if (isNavigating && selectedShop != null) _buildNavigationPanel(),
+          // المحتوى الرئيسي مع اسكرول محسن
+          CustomScrollView(
+            controller: _scrollController,
+            physics: const BouncingScrollPhysics(), // فيزياء اسكرول أفضل
+            slivers: [
+              _buildModernAppBar(),
+              SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    _buildEnhancedFloorSelector(),
+                    _buildModernStatusBar(),
+                    _buildStylishFavoritesButton(),
+                    _buildInteractiveMapContainer(),
+                    // مساحة إضافية للاسكرول عند ظهور لوحة التنقل
+                    SizedBox(height: isNavigating ? 200 : 20),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          
+          // لوحة التنقل المنزلقة
+          if (isNavigating && selectedShop != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SlideTransition(
+                position: _navigationSlideAnimation,
+                child: _buildModernNavigationPanel(),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  AppBar _buildAppBar() {
-    return AppBar(
-      title: Text(
-        "خريطة مول ${widget.userName}",
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          color: Color(0xFF1E3A8A), // Dark blue
+  Widget _buildModernAppBar() {
+    return SliverAppBar(
+      expandedHeight: 120,
+      floating: true,
+      pinned: true,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      flexibleSpace: FlexibleSpaceBar(
+        background: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.map, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          "خريطة مول", 
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            fontSize: 20,
+                          ),
+                        ),
+                        const Text(
+                          "خريطة تفاعلية ذكية",
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _buildModernActionButtons(),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
-      backgroundColor: Colors.white,
-      elevation: 2,
-      iconTheme: const IconThemeData(color: Color(0xFF1E3A8A)),
-      actions: [
-        IconButton(
+    );
+  }
+
+  Widget _buildModernActionButtons() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildGlassmorphismButton(
+          icon: Icons.analytics_outlined,
           onPressed: () => _showCrowdAnalysis(),
-          icon: const Icon(Icons.analytics, color: Color(0xFF1E3A8A)),
         ),
-        IconButton(
+        const SizedBox(width: 8),
+        _buildGlassmorphismButton(
+          icon: Icons.my_location_outlined,
           onPressed: () {
             setState(() {
               userPosition = const Offset(0.5, 0.9);
               selectedShop = null;
+              targetPosition = null;
               isNavigating = false;
             });
+            _pathController.reset();
+            _navigationPanelController.reverse();
           },
-          icon: const Icon(Icons.my_location, color: Color(0xFF1E3A8A)),
         ),
       ],
     );
   }
 
-  Widget _buildFloorSelector() {
+  Widget _buildGlassmorphismButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.3)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnhancedFloorSelector() {
     return Container(
       margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: const Color(0xFF87CEEB), width: 2),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF87CEEB).withOpacity(0.3),
+            color: const Color(0xFF4facfe).withOpacity(0.2),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF87CEEB), // Baby blue
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.layers, color: Colors.white, size: 20),
-          ),
-          const SizedBox(width: 15),
-          const Text(
-            "اختر الدور:",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              color: Color(0xFF1E3A8A), // Dark blue
-            ),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: selectedFloor,
-                isExpanded: true,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1E3A8A),
+        children: floorData.entries.map((entry) {
+          final isSelected = selectedFloor == entry.key;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  selectedFloor = entry.key;
+                  selectedShop = null;
+                  targetPosition = null;
+                  isNavigating = false;
+                  _pathController.reset();
+                  _navigationPanelController.reverse();
+                });
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                margin: const EdgeInsets.all(4),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: isSelected
+                      ? const LinearGradient(
+                          colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
+                        )
+                      : null,
+                  color: isSelected ? null : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                items: floorData.entries.map((entry) {
-                  return DropdownMenuItem(
-                    value: entry.key,
-                    child: Text(entry.value["name"]),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() {
-                    selectedFloor = value!;
-                    selectedShop = null;
-                    isNavigating = false;
-                    _pathController.reset();
-                  });
-                },
+                child: Text(
+                  entry.value["name"],
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isSelected ? Colors.white : Colors.grey.shade700,
+                    fontSize: 14,
+                  ),
+                ),
               ),
             ),
-          ),
-        ],
+          );
+        }).toList(),
       ),
     );
   }
 
-  Widget _buildStatusBar() {
+  Widget _buildModernStatusBar() {
     final currentTime = DateTime.now();
     final shops = floorData[selectedFloor]!["shops"] as List;
     
-    // حساب إحصائيات الازدحام
     int openShops = shops.where((s) => s["isOpen"] == true).length;
     int totalShops = shops.length;
     
@@ -882,16 +1022,15 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
     
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF87CEEB), width: 2),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.shade300,
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            color: Colors.grey.shade200,
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -900,76 +1039,63 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF87CEEB),
-                  borderRadius: BorderRadius.circular(12),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(Icons.access_time, color: Colors.white, size: 20),
+                child: const Icon(Icons.access_time, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "الوقت الحالي: ${_formatTime(currentTime)}",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2D3436),
+                      ),
+                    ),
+                    Text(
+                      "المتاجر المفتوحة: $openShops من $totalShops",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _buildModernRefreshButton(),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _buildModernCrowdIndicator("خفيف", crowdStats["خفيف"]!, const Color(0xFF00D084)),
               ),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "الوقت الحالي: ${_formatTime(currentTime)}",
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E3A8A),
-                    ),
-                  ),
-                  Text(
-                    "المتاجر المفتوحة: $openShops من $totalShops",
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF1E3A8A),
-                    ),
-                  ),
-                ],
+              Expanded(
+                child: _buildModernCrowdIndicator("متوسط", crowdStats["متوسط"]!, const Color(0xFFFFB800)),
               ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: () {
-                  _updateCrowdLevels();
-                },
-                icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
-                label: const Text(
-                  "تحديث",
-                  style: TextStyle(color: Colors.white, fontSize: 12),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF87CEEB),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildModernCrowdIndicator("مزدحم", crowdStats["مزدحم"]!, const Color(0xFFE84142)),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildCrowdIndicator("خفيف", crowdStats["خفيف"]!, Colors.green),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildCrowdIndicator("متوسط", crowdStats["متوسط"]!, Colors.orange),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildCrowdIndicator("مزدحم", crowdStats["مزدحم"]!, Colors.red),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
           Text(
             "آخر تحديث: ${_formatTime(lastUpdateTime)}",
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey.shade600,
+              color: Colors.grey.shade500,
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -978,24 +1104,69 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
     );
   }
 
-  Widget _buildCrowdIndicator(String level, int count, Color color) {
+  Widget _buildModernRefreshButton() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4facfe).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _updateCrowdLevels(),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 6),
+                Text(
+                  "تحديث",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernCrowdIndicator(String level, int count, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color, width: 1),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
       ),
       child: Column(
         children: [
           Text(
             count.toString(),
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
               color: color,
             ),
           ),
+          const SizedBox(height: 4),
           Text(
             level,
             style: TextStyle(
@@ -1009,74 +1180,267 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
     );
   }
 
-  Widget _buildFavoritesButton() {
+  Widget _buildStylishFavoritesButton() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ElevatedButton.icon(
-        onPressed: () => _showFavorites(),
-        icon: const Icon(Icons.favorite, color: Colors.red),
-        label: Text(
-          "المفضلة (${favoriteShops.length})",
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1E3A8A),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Colors.pink.shade400,
+              Colors.red.shade400,
+            ],
           ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.pink.withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          shape: RoundedRectangleBorder(
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
             borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: Color(0xFF87CEEB), width: 2),
+            onTap: () => _showFavorites(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.favorite_rounded, color: Colors.white, size: 24),
+                  const SizedBox(width: 12),
+                  Text(
+                    "المفضلة (${favoriteShops.length})",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildInteractiveMap() {
-    return Expanded(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Container(
-            margin: EdgeInsets.all(16 * constraints.maxWidth / 360),
+  Widget _buildInteractiveMapContainer() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      height: 500,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade300,
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 3.0,
+                  child: CustomPaint(
+                    size: Size(constraints.maxWidth, constraints.maxHeight),
+                    painter: ModernMallFloorPainter(
+                      floorData: floorData[selectedFloor]!,
+                      userPosition: Offset(
+                        userPosition.dx * constraints.maxWidth,
+                        userPosition.dy * constraints.maxHeight,
+                      ),
+                      selectedShop: selectedShop,
+                      targetPosition: targetPosition,
+                      pulseAnimation: _pulseAnimation,
+                      pathAnimation: _pathAnimation,
+                      isNavigating: isNavigating,
+                      favoriteShops: favoriteShops,
+                      screenSize: Size(constraints.maxWidth, constraints.maxHeight),
+                    ),
+                    child: GestureDetector(
+                      onTapUp: (details) => _handleMapTap(
+                        details.localPosition,
+                        constraints.maxWidth,
+                        constraints.maxHeight,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          _buildLegendWidget(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegendWidget() {
+    return Positioned(
+      right: 16,
+      top: 80,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            legendOffset += details.delta;
+          });
+        },
+        child: Transform.translate(
+          offset: legendOffset,
+          child: Container(
+            width: 140,
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20 * constraints.maxWidth / 360),
-              border: Border.all(color: const Color(0xFF87CEEB), width: 3 * constraints.maxWidth / 360),
+              color: Colors.white.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: const Color(0xFF4facfe).withOpacity(0.3),
+                width: 1,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.shade400,
-                  blurRadius: 20 * constraints.maxWidth / 360,
-                  offset: Offset(0, 8 * constraints.maxWidth / 360),
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20 * constraints.maxWidth / 360),
-              child: InteractiveViewer(
-                minScale: 0.5,
-                maxScale: 4.0,
-                child: CustomPaint(
-                  size: Size(constraints.maxWidth, constraints.maxHeight),
-                  painter: MallFloorPainter(
-                    floorData: floorData[selectedFloor]!,
-                    userPosition: Offset(userPosition.dx * constraints.maxWidth, userPosition.dy * constraints.maxHeight),
-                    selectedShop: selectedShop,
-                    pulseAnimation: _pulseAnimation,
-                    pathAnimation: _pathAnimation,
-                    isNavigating: isNavigating,
-                    favoriteShops: favoriteShops,
-                    screenSize: Size(constraints.maxWidth, constraints.maxHeight),
-                  ),
-                  child: GestureDetector(
-                    onTapUp: (details) => _handleMapTap(details.localPosition, constraints.maxWidth, constraints.maxHeight),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "مفتاح الخريطة",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2D3436),
                   ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                ...legendItems.map((item) => GestureDetector(
+                  onTap: () => _showLegendItemInfo(item["text"] as String),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        _buildLegendIndicatorWidget(item),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            item["text"] as String,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF2D3436),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )).toList(),
+              ],
             ),
-          );
-        },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLegendIndicatorWidget(Map<String, dynamic> item) {
+    final type = item["type"] as String;
+    final color = item["color"] as Color;
+    switch (type) {
+      case "user":
+        return Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+          ),
+          child: Container(
+            margin: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+            ),
+          ),
+        );
+      case "shop_open":
+      case "shop_closed":
+        return Container(
+          width: 16,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+      case "facility":
+      case "crowd_light":
+      case "crowd_medium":
+      case "crowd_heavy":
+        return Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+          ),
+        );
+      case "favorite":
+        return Icon(Icons.favorite, size: 12, color: color);
+      case "walkway":
+        return Container(
+          width: 16,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        );
+      case "selected":
+        return Container(
+          width: 16,
+          height: 12,
+          decoration: BoxDecoration(
+            border: Border.all(color: color, width: 2),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+      default:
+        return Container(width: 12, height: 12, color: color);
+    }
+  }
+
+  void _showLegendItemInfo(String text) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text("شرح العنصر"),
+        content: Text("هذا العنصر يمثل: $text في الخريطة."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("موافق"),
+          ),
+        ],
       ),
     );
   }
@@ -1085,7 +1449,6 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
     final shops = floorData[selectedFloor]!["shops"] as List;
     final facilities = floorData[selectedFloor]!["facilities"] as List;
     
-    // فحص النقر على المتاجر
     for (var shop in shops) {
       final shopPosition = Offset(shop["position"].dx * width, shop["position"].dy * height);
       final shopSize = Size(shop["size"].width * width, shop["size"].height * height);
@@ -1098,217 +1461,331 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
       );
       
       if (rect.contains(position)) {
+        final center = Offset(
+          shopPosition.dx + shopSize.width / 2,
+          shopPosition.dy + shopSize.height / 2,
+        );
         setState(() {
           selectedShop = shop["name"];
+          targetPosition = center;
           isNavigating = true;
         });
         _pathController.forward();
+        _navigationPanelController.forward();
+        
+        // اسكرول سلس للأسفل لإظهار لوحة التنقل
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+        );
         return;
       }
     }
     
-    // فحص النقر على المرافق
     for (var facility in facilities) {
       final facilityPosition = Offset(facility["position"].dx * width, facility["position"].dy * height);
       
       final distance = (position - facilityPosition).distance;
-      if (distance <= 25 * width / 360) {
+      if (distance <= 25) {
         setState(() {
           selectedShop = facility["name"];
+          targetPosition = facilityPosition;
           isNavigating = true;
         });
         _pathController.forward();
+        _navigationPanelController.forward();
+        
+        // اسكرول سلس للأسفل
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+        );
         return;
       }
     }
   }
 
-  Widget _buildNavigationPanel() {
+  Widget _buildModernNavigationPanel() {
     final shops = floorData[selectedFloor]!["shops"] as List;
     final facilities = floorData[selectedFloor]!["facilities"] as List;
     
-    // البحث في المتاجر أولاً
     var item = shops.where((s) => s["name"] == selectedShop).firstOrNull;
     item ??= facilities.where((f) => f["name"] == selectedShop).firstOrNull;
     
     if (item == null) return Container();
     
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
+    return Container(
       margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.white, const Color(0xFFF0F8FF)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: const Color(0xFF87CEEB), width: 2),
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF87CEEB).withOpacity(0.3),
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 20,
-            offset: const Offset(0, 8),
+            offset: const Offset(0, -8),
           ),
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF87CEEB),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  item["icon"] ?? Icons.place,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          // مقبض السحب
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 50,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            "التوجه إلى: ${item["name"]}",
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E3A8A),
-                            ),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            item["color"] ?? const Color(0xFF4facfe),
+                            (item["color"] ?? const Color(0xFF4facfe)).withOpacity(0.8),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (item["color"] ?? const Color(0xFF4facfe)).withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
-                        ),
-                        IconButton(
-                          onPressed: () {
-                            setState(() {
-                              if (favoriteShops.contains(item["name"])) {
-                                favoriteShops.remove(item["name"]);
-                              } else {
-                                favoriteShops.add(item["name"]);
-                              }
-                            });
-                          },
-                          icon: Icon(
-                            favoriteShops.contains(item["name"]) ? Icons.favorite : Icons.favorite_border,
-                            color: Colors.red,
-                            size: 28,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (item["category"] != null)
-                      Text(
-                        "النوع: ${item["category"]}",
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Color(0xFF1E3A8A),
-                        ),
+                        ],
                       ),
-                    Row(
-                      children: [
-                        Icon(
-                          item["isOpen"] == true ? Icons.check_circle : Icons.cancel,
-                          color: item["isOpen"] == true ? Colors.green : Colors.red,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          item["isOpen"] == true ? "مفتوح" : "مغلق",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: item["isOpen"] == true ? Colors.green : Colors.red,
+                      child: Icon(
+                        item["icon"] ?? Icons.place,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  "التوجه إلى: ${item["name"]}",
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D3436),
+                                  ),
+                                ),
+                              ),
+                              _buildModernFavoriteButton(item),
+                            ],
                           ),
-                        ),
-                        const SizedBox(width: 20),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: getCrowdColor(item["crowdLevel"] ?? "خفيف"),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            "الازدحام: ${item["crowdLevel"] ?? "غير محدد"}",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                          if (item["category"] != null)
+                            Container(
+                              margin: const EdgeInsets.only(top: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                "النوع: ${item["category"]}",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade700,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              _buildStatusChip(
+                                icon: item["isOpen"] == true ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                                label: item["isOpen"] == true ? "مفتوح" : "مغلق",
+                                color: item["isOpen"] == true ? const Color(0xFF00D084) : const Color(0xFFE84142),
+                              ),
+                              const SizedBox(width: 12),
+                              _buildStatusChip(
+                                icon: Icons.people_rounded,
+                                label: "الازدحام: ${item["crowdLevel"] ?? "غير محدد"}",
+                                color: getCrowdColor(item["crowdLevel"] ?? "خفيف"),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      isNavigating = false;
-                      selectedShop = null;
-                    });
-                    _pathController.reset();
-                  },
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  label: const Text(
-                    "إنهاء التوجيه",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildModernActionButton(
+                        icon: Icons.close_rounded,
+                        label: "إنهاء التوجيه",
+                        color: const Color(0xFFE84142),
+                        onPressed: () {
+                          setState(() {
+                            isNavigating = false;
+                            selectedShop = null;
+                            targetPosition = null;
+                          });
+                          _pathController.reset();
+                          _navigationPanelController.reverse();
+                        },
+                      ),
                     ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red.shade600,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildModernActionButton(
+                        icon: Icons.info_rounded,
+                        label: "التفاصيل",
+                        color: const Color(0xFF4facfe),
+                        onPressed: () => _showItemDetails(item),
+                        isOutlined: true,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    _showItemDetails(item);
-                  },
-                  icon: const Icon(Icons.info, color: Color(0xFF1E3A8A)),
-                  label: const Text(
-                    "التفاصيل",
-                    style: TextStyle(
-                      color: Color(0xFF1E3A8A),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: Color(0xFF87CEEB), width: 2),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModernFavoriteButton(Map<String, dynamic> item) {
+    final isFavorite = favoriteShops.contains(item["name"]);
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: isFavorite ? Colors.red.withOpacity(0.1) : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isFavorite ? Colors.red.withOpacity(0.3) : Colors.grey.shade300,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            setState(() {
+              if (favoriteShops.contains(item["name"])) {
+                favoriteShops.remove(item["name"]);
+              } else {
+                favoriteShops.add(item["name"]);
+              }
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(
+              isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              color: isFavorite ? Colors.red : Colors.grey.shade600,
+              size: 20,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+    bool isOutlined = false,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: isOutlined ? null : LinearGradient(
+          colors: [color, color.withOpacity(0.8)],
+        ),
+        color: isOutlined ? Colors.white : null,
+        borderRadius: BorderRadius.circular(16),
+        border: isOutlined ? Border.all(color: color, width: 1.5) : null,
+        boxShadow: isOutlined ? null : [
+          BoxShadow(
+            color: color.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: isOutlined ? color : Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isOutlined ? color : Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1316,387 +1793,263 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
   void _showItemDetails(Map<String, dynamic> item) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => Dialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0xFF87CEEB), width: 2),
+          borderRadius: BorderRadius.circular(24),
         ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF87CEEB),
-                borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      item["color"] ?? const Color(0xFF4facfe),
+                      (item["color"] ?? const Color(0xFF4facfe)).withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(
+                  item["icon"] ?? Icons.place,
+                  color: Colors.white,
+                  size: 32,
+                ),
               ),
-              child: Icon(item["icon"], color: Colors.white, size: 28),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
+              const SizedBox(height: 16),
+              Text(
                 item["name"],
-                style: const TextStyle(color: Color(0xFF1E3A8A)),
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3436),
+                ),
               ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (item["category"] != null)
-              _buildDetailRow(Icons.category, "النوع", item["category"]),
-            const SizedBox(height: 10),
-            _buildDetailRow(Icons.layers, "الدور", floorData[selectedFloor]!["name"]),
-            const SizedBox(height: 10),
-            if (item["openingHours"] != null)
-              _buildDetailRow(Icons.access_time, "ساعات العمل", item["openingHours"]),
-            const SizedBox(height: 10),
-            _buildDetailRow(
-              item["isOpen"] == true ? Icons.check_circle : Icons.cancel,
-              "الحالة",
-              item["isOpen"] == true ? "مفتوح الآن" : "مغلق الآن",
-              color: item["isOpen"] == true ? Colors.green : Colors.red,
-            ),
-            const SizedBox(height: 10),
-            _buildDetailRow(
-              Icons.people,
-              "مستوى الازدحام",
-              item["crowdLevel"] ?? "غير محدد",
-              color: getCrowdColor(item["crowdLevel"] ?? "خفيف"),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              setState(() {
-                if (favoriteShops.contains(item["name"])) {
-                  favoriteShops.remove(item["name"]);
-                } else {
-                  favoriteShops.add(item["name"]);
-                }
-              });
-              Navigator.pop(context);
-            },
-            icon: Icon(
-              favoriteShops.contains(item["name"]) ? Icons.favorite : Icons.favorite_border,
-              color: Colors.red,
-            ),
-            label: Text(
-              favoriteShops.contains(item["name"]) ? "إزالة من المفضلة" : "إضافة للمفضلة",
-              style: const TextStyle(color: Color(0xFF1E3A8A)),
-            ),
+              const SizedBox(height: 20),
+              if (item["category"] != null)
+                _buildDetailItem(Icons.category_rounded, "النوع", item["category"]),
+              _buildDetailItem(Icons.layers_rounded, "الدور", floorData[selectedFloor]!["name"]),
+              if (item["openingHours"] != null)
+                _buildDetailItem(Icons.access_time_rounded, "ساعات العمل", item["openingHours"]),
+              _buildDetailItem(
+                item["isOpen"] == true ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                "الحالة",
+                item["isOpen"] == true ? "مفتوح الآن" : "مغلق الآن",
+                color: item["isOpen"] == true ? const Color(0xFF00D084) : const Color(0xFFE84142),
+              ),
+              _buildDetailItem(
+                Icons.people_rounded,
+                "مستوى الازدحام",
+                item["crowdLevel"] ?? "غير محدد",
+                color: getCrowdColor(item["crowdLevel"] ?? "خفيف"),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildModernActionButton(
+                      icon: favoriteShops.contains(item["name"]) 
+                          ? Icons.favorite_rounded 
+                          : Icons.favorite_border_rounded,
+                      label: favoriteShops.contains(item["name"]) 
+                          ? "إزالة من المفضلة" 
+                          : "إضافة للمفضلة",
+                      color: Colors.red,
+                      isOutlined: true,
+                      onPressed: () {
+                        setState(() {
+                          if (favoriteShops.contains(item["name"])) {
+                            favoriteShops.remove(item["name"]);
+                          } else {
+                            favoriteShops.add(item["name"]);
+                          }
+                        });
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildModernActionButton(
+                      icon: Icons.close_rounded,
+                      label: "إغلاق",
+                      color: Colors.grey,
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("إغلاق", style: TextStyle(color: Color(0xFF1E3A8A), fontSize: 16)),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildDetailRow(IconData icon, String label, String value, {Color? color}) {
-    return Row(
-      children: [
-        Icon(icon, color: color ?? const Color(0xFF87CEEB), size: 20),
-        const SizedBox(width: 8),
-        Text(
-          "$label: ",
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            color: Color(0xFF1E3A8A),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              color: color ?? const Color(0xFF1E3A8A),
+  Widget _buildDetailItem(IconData icon, String label, String value, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (color ?? const Color(0xFF4facfe)).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
             ),
+            child: Icon(icon, color: color ?? const Color(0xFF4facfe), size: 18),
           ),
-        ),
-      ],
-    );
-  }
-
-  void _showCrowdAnalysis() {
-    final shops = floorData[selectedFloor]!["shops"] as List;
-    final currentHour = DateTime.now().hour;
-    
-    // تجميع البيانات حسب الفئة
-    Map<String, Map<String, int>> categoryStats = {};
-    
-    for (var shop in shops) {
-      String category = shop["category"] ?? "عام";
-      if (!categoryStats.containsKey(category)) {
-        categoryStats[category] = {"خفيف": 0, "متوسط": 0, "مزدحم": 0, "مغلق": 0};
-      }
-      
-      if (shop["isOpen"] == true) {
-        String crowdLevel = shop["crowdLevel"] ?? "خفيف";
-        categoryStats[category]![crowdLevel] = (categoryStats[category]![crowdLevel] ?? 0) + 1;
-      } else {
-        categoryStats[category]!["مغلق"] = (categoryStats[category]!["مغلق"] ?? 0) + 1;
-      }
-    }
-    
-    // التوقع للساعة القادمة
-    String nextHourPrediction = _predictNextHourCrowd(currentHour);
-    
-    showDialog(
-      context: context,
-      builder: (context) {
-        final screenSize = MediaQuery.of(context).size;
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20 * screenSize.width / 360),
-            side: BorderSide(color: const Color(0xFF87CEEB), width: 2 * screenSize.width / 360),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.analytics, color: Color(0xFF87CEEB), size: 28),
-              SizedBox(width: 10),
-              Text("تحليل الازدحام", style: TextStyle(color: Color(0xFF1E3A8A))),
-            ],
-          ),
-          content: SizedBox(
-            width: screenSize.width * 0.9,
-            height: screenSize.height * 0.5,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: 12),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(fontSize: 14, color: Color(0xFF2D3436)),
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F8FF),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF87CEEB), width: 1),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "📊 توقع الساعة القادمة:",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E3A8A),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          nextHourPrediction,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF1E3A8A),
-                          ),
-                        ),
-                      ],
-                    ),
+                  TextSpan(
+                    text: "$label: ",
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "📈 إحصائيات حسب الفئة:",
+                  TextSpan(
+                    text: value,
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E3A8A),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ...categoryStats.entries.map((entry) {
-                    return Card(
-                      color: const Color(0xFFF0F8FF),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: const BorderSide(color: Color(0xFF87CEEB), width: 1),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              entry.key,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E3A8A),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                _buildMiniCrowdIndicator("🟢", entry.value["خفيف"]!),
-                                _buildMiniCrowdIndicator("🟠", entry.value["متوسط"]!),
-                                _buildMiniCrowdIndicator("🔴", entry.value["مزدحم"]!),
-                                _buildMiniCrowdIndicator("⚫", entry.value["مغلق"]!),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.yellow.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange, width: 1),
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "💡 نصائح:",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          "• أفضل أوقات للتسوق: 10-12 ظهراً\n• المطاعم أقل ازدحاماً: 3-5 عصراً\n• تجنب أوقات الذروة: 7-9 مساءً",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ],
+                      color: color ?? const Color(0xFF636E72),
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("إغلاق", style: TextStyle(color: Color(0xFF1E3A8A))),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildMiniCrowdIndicator(String emoji, int count) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Text(
-        "$emoji $count",
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ],
       ),
     );
   }
 
-  String _predictNextHourCrowd(int currentHour) {
-    int nextHour = (currentHour + 1) % 24;
-    
-    if (nextHour >= 18 && nextHour <= 21) {
-      return "🔴 الساعة ${nextHour}:00 - متوقع ازدحام شديد في المطاعم ومناطق الترفيه";
-    } else if (nextHour >= 12 && nextHour <= 15) {
-      return "🟠 الساعة ${nextHour}:00 - متوقع ازدحام متوسط في المطاعم";
-    } else if (nextHour >= 10 && nextHour <= 12) {
-      return "🟢 الساعة ${nextHour}:00 - أفضل وقت للتسوق - ازدحام خفيف";
-    } else if (nextHour >= 22 || nextHour <= 6) {
-      return "⚫ الساعة ${nextHour}:00 - معظم المتاجر ستكون مغلقة";
-    } else {
-      return "🟢 الساعة ${nextHour}:00 - متوقع ازدحام خفيف في معظم المناطق";
-    }
+  void _showCrowdAnalysis() {
+    // تنفيذ تحليل الازدحام المحسن
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.analytics_rounded, color: Colors.white, size: 32),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                "تحليل الازدحام",
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3436),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                "التحليل قيد التطوير...",
+                style: TextStyle(fontSize: 16, color: Color(0xFF636E72)),
+              ),
+              const SizedBox(height: 20),
+              _buildModernActionButton(
+                icon: Icons.close_rounded,
+                label: "إغلاق",
+                color: const Color(0xFF4facfe),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showFavorites() {
+    // تنفيذ عرض المفضلة المحسن
     showDialog(
       context: context,
-      builder: (context) {
-        final screenSize = MediaQuery.of(context).size;
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20 * screenSize.width / 360),
-            side: BorderSide(color: const Color(0xFF87CEEB), width: 2 * screenSize.width / 360),
-          ),
-          title: const Row(
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.favorite, color: Colors.red, size: 28),
-              SizedBox(width: 10),
-              Text("المتاجر المفضلة", style: TextStyle(color: Color(0xFF1E3A8A))),
-            ],
-          ),
-          content: SizedBox(
-            width: screenSize.width * 0.9,
-            height: screenSize.height * 0.5,
-            child: favoriteShops.isEmpty
-                ? const Center(
-                    child: Text(
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.pink.shade400, Colors.red.shade400],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 32),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                "المتاجر المفضلة",
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3436),
+                ),
+              ),
+              const SizedBox(height: 20),
+              favoriteShops.isEmpty
+                  ? const Text(
                       "لا توجد متاجر مفضلة بعد",
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Color(0xFF1E3A8A),
+                      style: TextStyle(fontSize: 16, color: Color(0xFF636E72)),
+                    )
+                  : SizedBox(
+                      height: 300,
+                      child: ListView.builder(
+                        itemCount: favoriteShops.length,
+                        itemBuilder: (context, index) {
+                          final shopName = favoriteShops.elementAt(index);
+                          return ListTile(
+                            leading: const Icon(Icons.favorite_rounded, color: Colors.red),
+                            title: Text(shopName),
+                            trailing: IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  favoriteShops.remove(shopName);
+                                });
+                                Navigator.pop(context);
+                                _showFavorites();
+                              },
+                              icon: const Icon(Icons.delete_rounded, color: Colors.red),
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  )
-                : ListView.builder(
-                    itemCount: favoriteShops.length,
-                    itemBuilder: (context, index) {
-                      final shopName = favoriteShops.elementAt(index);
-                      return Card(
-                        color: const Color(0xFFF0F8FF),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: const BorderSide(color: Color(0xFF87CEEB), width: 1),
-                        ),
-                        child: ListTile(
-                          leading: const Icon(Icons.favorite, color: Colors.red),
-                          title: Text(
-                            shopName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E3A8A),
-                            ),
-                          ),
-                          trailing: IconButton(
-                            onPressed: () {
-                              setState(() {
-                                favoriteShops.remove(shopName);
-                              });
-                              Navigator.pop(context);
-                              _showFavorites();
-                            },
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            setState(() {
-                              selectedShop = shopName;
-                              isNavigating = true;
-                            });
-                            _pathController.forward();
-                          },
-                        ),
-                      );
-                    },
-                  ),
+              const SizedBox(height: 20),
+              _buildModernActionButton(
+                icon: Icons.close_rounded,
+                label: "إغلاق",
+                color: const Color(0xFF4facfe),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("إغلاق", style: TextStyle(color: Color(0xFF1E3A8A), fontSize: 16)),
-            ),
-          ],
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -1704,25 +2057,30 @@ class _EnhancedFloorMapScreenState extends State<EnhancedFloorMapScreen>
   void dispose() {
     _pulseController.dispose();
     _pathController.dispose();
+    _navigationPanelController.dispose();
+    _scrollController.dispose();
     _crowdUpdateTimer?.cancel();
     super.dispose();
   }
 }
 
-class MallFloorPainter extends CustomPainter {
+// CustomPainter محسن
+class ModernMallFloorPainter extends CustomPainter {
   final Map<String, dynamic> floorData;
   final Offset userPosition;
   final String? selectedShop;
+  final Offset? targetPosition;
   final Animation<double> pulseAnimation;
   final Animation<double> pathAnimation;
   final bool isNavigating;
   final Set<String> favoriteShops;
   final Size screenSize;
 
-  MallFloorPainter({
+  ModernMallFloorPainter({
     required this.floorData,
     required this.userPosition,
     this.selectedShop,
+    this.targetPosition,
     required this.pulseAnimation,
     required this.pathAnimation,
     required this.isNavigating,
@@ -1730,162 +2088,134 @@ class MallFloorPainter extends CustomPainter {
     required this.screenSize,
   }) : super(repaint: pulseAnimation);
 
-  Offset scaleOffset(Offset original) {
-    return Offset(
-      original.dx * screenSize.width,
-      original.dy * screenSize.height,
-    );
-  }
-
-  Size scaleSize(Size original) {
-    return Size(
-      original.width * screenSize.width,
-      original.height * screenSize.height,
-    );
-  }
-
-  double scaleValue(double original) {
-    return original * screenSize.width / 800;
-  }
-
   @override
   void paint(Canvas canvas, Size size) {
-    _drawBackground(canvas, size);
-    _drawWalkways(canvas, size);
-    _drawShops(canvas);
-    _drawFacilities(canvas);
-    _drawUserPosition(canvas);
-    if (isNavigating && selectedShop != null) _drawNavigationPath(canvas);
-    _drawLabels(canvas, size);
+    _drawModernBackground(canvas, size);
+    _drawModernWalkways(canvas, size);
+    _drawModernShops(canvas);
+    _drawModernFacilities(canvas);
+    _drawModernUserPosition(canvas);
+    if (isNavigating && targetPosition != null) _drawModernNavigationPath(canvas);
+    _drawModernLabels(canvas, size);
   }
 
-  void _drawBackground(Canvas canvas, Size size) {
-    final backgroundPaint = Paint()
-      ..color = const Color(0xFFF8FCFF)
-      ..style = PaintingStyle.fill;
-    
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
-    
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = scaleValue(6);
-    
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(scaleValue(15), scaleValue(15), size.width - scaleValue(30), size.height - scaleValue(30)),
-        Radius.circular(scaleValue(20)),
-      ),
-      borderPaint,
+  void _drawModernBackground(Canvas canvas, Size size) {
+    // خلفية متدرجة حديثة
+    final gradient = LinearGradient(
+      colors: [
+        const Color(0xFFF8F9FA),
+        const Color(0xFFE9ECEF),
+      ],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
     );
     
-    final innerBorderPaint = Paint()
-      ..color = const Color(0xFF87CEEB)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = scaleValue(3);
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final paint = Paint()..shader = gradient.createShader(rect);
     
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(scaleValue(20), scaleValue(20), size.width - scaleValue(40), size.height - scaleValue(40)),
-        Radius.circular(scaleValue(15)),
-      ),
-      innerBorderPaint,
+      RRect.fromRectAndRadius(rect, const Radius.circular(24)),
+      paint,
     );
   }
 
-  void _drawWalkways(Canvas canvas, Size size) {
+  void _drawModernWalkways(Canvas canvas, Size size) {
     final walkwayPaint = Paint()
-      ..color = const Color(0xFFF0F8FF) // Baby blue فاتح جداً
+      ..color = Colors.white
       ..style = PaintingStyle.fill;
     
-    final walkwayBorder = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = scaleValue(3);
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.05)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
     
-    // الممرات الأفقية
+    // الممرات مع ظلال ناعمة
     final walkways = [
-      Rect.fromLTWH(scaleValue(40), scaleValue(100), scaleValue(680), scaleValue(60)),
-      Rect.fromLTWH(scaleValue(40), scaleValue(250), scaleValue(680), scaleValue(60)),
-      Rect.fromLTWH(scaleValue(40), scaleValue(400), scaleValue(680), scaleValue(60)),
-      Rect.fromLTWH(scaleValue(30), scaleValue(520), scaleValue(740), scaleValue(40)),
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(size.width * 0.1, size.height * 0.2, size.width * 0.8, size.height * 0.12),
+        const Radius.circular(16),
+      ),
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(size.width * 0.1, size.height * 0.5, size.width * 0.8, size.height * 0.12),
+        const Radius.circular(16),
+      ),
     ];
     
     for (var walkway in walkways) {
-      final rrect = RRect.fromRectAndRadius(walkway, Radius.circular(scaleValue(8)));
-      canvas.drawRRect(rrect, walkwayPaint);
-      canvas.drawRRect(rrect, walkwayBorder);
+      // رسم الظل
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          walkway.outerRect.translate(0, 2),
+          walkway.tlRadius,
+        ),
+        shadowPaint,
+      );
+      // رسم الممر
+      canvas.drawRRect(walkway, walkwayPaint);
     }
-    
-    // الممر العمودي المركزي
-    final centerWalkway = RRect.fromRectAndRadius(
-      Rect.fromLTWH(scaleValue(370), scaleValue(100), scaleValue(60), scaleValue(520)),
-      Radius.circular(scaleValue(8)),
-    );
-    canvas.drawRRect(centerWalkway, walkwayPaint);
-    canvas.drawRRect(centerWalkway, walkwayBorder);
   }
 
-  void _drawShops(Canvas canvas) {
+  void _drawModernShops(Canvas canvas) {
     final shops = floorData["shops"] as List;
     
     for (var shop in shops) {
-      final position = scaleOffset(shop["position"] as Offset);
-      final shopSize = scaleSize(shop["size"] as Size);
+      final position = Offset(
+        shop["position"].dx * screenSize.width,
+        shop["position"].dy * screenSize.height,
+      );
+      final shopSize = Size(
+        shop["size"].width * screenSize.width,
+        shop["size"].height * screenSize.height,
+      );
       final color = shop["color"] as Color;
       final isOpen = shop["isOpen"] as bool;
-      final crowdLevel = shop["crowdLevel"] as String;
-      final isFavorite = favoriteShops.contains(shop["name"]);
       
-      // رسم ظل المتجر
+      // ظل المتجر
       final shadowPaint = Paint()
         ..color = Colors.black.withOpacity(0.1)
-        ..style = PaintingStyle.fill;
-      
-      final shadowRect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          position.dx + scaleValue(3),
-          position.dy + scaleValue(3),
-          shopSize.width,
-          shopSize.height,
-        ),
-        Radius.circular(scaleValue(12)),
-      );
-      canvas.drawRRect(shadowRect, shadowPaint);
-      
-      // رسم المتجر
-      final shopPaint = Paint()
-        ..color = isOpen ? color : color.withOpacity(0.5)
-        ..style = PaintingStyle.fill;
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
       
       final shopRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(position.dx, position.dy, shopSize.width, shopSize.height),
-        Radius.circular(scaleValue(12)),
+        const Radius.circular(16),
       );
+      
+      // رسم الظل
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          shopRect.outerRect.translate(0, 4),
+          shopRect.tlRadius,
+        ),
+        shadowPaint,
+      );
+      
+      // رسم المتجر
+      final shopPaint = Paint()
+        ..shader = LinearGradient(
+          colors: [
+            isOpen ? color : color.withOpacity(0.5),
+            isOpen ? color.withOpacity(0.8) : color.withOpacity(0.3),
+          ],
+        ).createShader(shopRect.outerRect);
+      
       canvas.drawRRect(shopRect, shopPaint);
       
-      // الحدود البيضاء
-      final borderPaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = scaleValue(3);
-      canvas.drawRRect(shopRect, borderPaint);
+      // تمييز المتجر المحدد
+      if (selectedShop == shop["name"]) {
+        final highlightPaint = Paint()
+          ..color = const Color(0xFF4facfe)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3;
+        canvas.drawRRect(shopRect, highlightPaint);
+      }
       
       // رسم اسم المتجر
       final textPainter = TextPainter(
         text: TextSpan(
           text: shop["name"],
-          style: TextStyle(
+          style: const TextStyle(
             color: Colors.white,
-            fontSize: scaleValue(14),
+            fontSize: 12,
             fontWeight: FontWeight.bold,
-            shadows: [
-              Shadow(
-                offset: Offset(scaleValue(1), scaleValue(1)),
-                blurRadius: scaleValue(2),
-                color: Colors.black54,
-              ),
-            ],
           ),
         ),
         textDirection: TextDirection.rtl,
@@ -1896,406 +2226,100 @@ class MallFloorPainter extends CustomPainter {
         canvas,
         Offset(
           position.dx + (shopSize.width - textPainter.width) / 2,
-          position.dy + shopSize.height - scaleValue(35),
+          position.dy + (shopSize.height - textPainter.height) / 2,
         ),
       );
-      
-      // رسم حالة المتجر
-      final statusText = isOpen ? "مفتوح" : "مغلق";
-      final statusColor = isOpen ? Colors.green : Colors.red;
-      
-      final statusPainter = TextPainter(
-        text: TextSpan(
-          text: statusText,
-          style: TextStyle(
-            color: statusColor,
-            fontSize: scaleValue(10),
-            fontWeight: FontWeight.bold,
-            backgroundColor: Colors.white,
-          ),
-        ),
-        textDirection: TextDirection.rtl,
-      );
-      
-      statusPainter.layout();
-      statusPainter.paint(
-        canvas,
-        Offset(
-          position.dx + scaleValue(5),
-          position.dy + scaleValue(5),
-        ),
-      );
-      
-      // رسم مستوى الازدحام
-      final crowdColor = _getCrowdColor(crowdLevel);
-      final crowdPaint = Paint()
-        ..color = crowdColor
-        ..style = PaintingStyle.fill;
-      
-      canvas.drawCircle(
-        Offset(position.dx + shopSize.width - scaleValue(15), position.dy + scaleValue(15)),
-        scaleValue(8),
-        crowdPaint,
-      );
-      
-      canvas.drawCircle(
-        Offset(position.dx + shopSize.width - scaleValue(15), position.dy + scaleValue(15)),
-        scaleValue(8),
-        Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = scaleValue(2),
-      );
-      
-      // رسم أيقونة المفضلة
-      if (isFavorite) {
-        final heartPaint = Paint()
-          ..color = Colors.red
-          ..style = PaintingStyle.fill;
-        
-        canvas.drawCircle(
-          Offset(position.dx + shopSize.width - scaleValue(15), position.dy + shopSize.height - scaleValue(15)),
-          scaleValue(10),
-          Paint()..color = Colors.white..style = PaintingStyle.fill,
-        );
-        
-        canvas.drawCircle(
-          Offset(position.dx + shopSize.width - scaleValue(15), position.dy + shopSize.height - scaleValue(15)),
-          scaleValue(10),
-          Paint()..color = Colors.red..style = PaintingStyle.stroke..strokeWidth = scaleValue(2),
-        );
-        
-        // رسم شكل القلب (مبسط)
-        canvas.drawCircle(
-          Offset(position.dx + shopSize.width - scaleValue(15), position.dy + shopSize.height - scaleValue(15)),
-          scaleValue(6),
-          heartPaint,
-        );
-      }
-      
-      // تمييز المتجر المحدد
-      if (selectedShop == shop["name"]) {
-        final highlightPaint = Paint()
-          ..color = const Color(0xFF87CEEB)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = scaleValue(4);
-        canvas.drawRRect(shopRect, highlightPaint);
-        
-        // تأثير وميض
-        final glowPaint = Paint()
-          ..color = const Color(0xFF87CEEB).withOpacity(0.3)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = scaleValue(8);
-        canvas.drawRRect(shopRect, glowPaint);
-      }
     }
   }
 
-  Color _getCrowdColor(String crowdLevel) {
-    switch (crowdLevel) {
-      case "خفيف":
-        return Colors.green;
-      case "متوسط":
-        return Colors.orange;
-      case "مزدحم":
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  void _drawFacilities(Canvas canvas) {
+  void _drawModernFacilities(Canvas canvas) {
     final facilities = floorData["facilities"] as List;
     
     for (var facility in facilities) {
-      final position = scaleOffset(facility["position"] as Offset);
+      final position = Offset(
+        facility["position"].dx * screenSize.width,
+        facility["position"].dy * screenSize.height,
+      );
       final color = facility["color"] as Color;
-      final isOpen = facility["isOpen"] as bool;
-      final crowdLevel = facility["crowdLevel"] as String;
       
-      // رسم دائرة الخلفية
-      final backgroundPaint = Paint()
-        ..color = isOpen ? color : color.withOpacity(0.5)
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(position, scaleValue(22), backgroundPaint);
+      // رسم دائرة حديثة للمرفق
+      final facilityPaint = Paint()
+        ..shader = RadialGradient(
+          colors: [color, color.withOpacity(0.7)],
+        ).createShader(Rect.fromCircle(center: position, radius: 20));
+      
+      canvas.drawCircle(position, 20, facilityPaint);
       
       // الحدود البيضاء
       final borderPaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
-        ..strokeWidth = scaleValue(3);
-      canvas.drawCircle(position, scaleValue(22), borderPaint);
+        ..strokeWidth = 2;
       
-      // رسم دائرة بيضاء داخلية للأيقونة
-      final iconBackgroundPaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(position, scaleValue(16), iconBackgroundPaint);
-      
-      // رسم مستوى الازدحام
-      final crowdColor = _getCrowdColor(crowdLevel);
-      final crowdPaint = Paint()
-        ..color = crowdColor
-        ..style = PaintingStyle.fill;
-      
-      canvas.drawCircle(
-        Offset(position.dx + scaleValue(15), position.dy - scaleValue(15)),
-        scaleValue(6),
-        crowdPaint,
-      );
-      
-      canvas.drawCircle(
-        Offset(position.dx + scaleValue(15), position.dy - scaleValue(15)),
-        scaleValue(6),
-        Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = scaleValue(2),
-      );
-      
-      // رسم اسم المرفق
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: facility["name"],
-          style: TextStyle(
-            color: const Color(0xFF1E3A8A),
-            fontSize: scaleValue(11),
-            fontWeight: FontWeight.bold,
-            backgroundColor: Colors.white,
-          ),
-        ),
-        textDirection: TextDirection.rtl,
-      );
-      
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(
-          position.dx - textPainter.width / 2,
-          position.dy + scaleValue(28),
-        ),
-      );
-      
-      // تمييز المرفق المحدد
-      if (selectedShop == facility["name"]) {
-        final highlightPaint = Paint()
-          ..color = const Color(0xFF87CEEB)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = scaleValue(4);
-        canvas.drawCircle(position, scaleValue(26), highlightPaint);
-      }
+      canvas.drawCircle(position, 20, borderPaint);
     }
   }
 
-  void _drawUserPosition(Canvas canvas) {
-    // رسم دائرة النبض
+  void _drawModernUserPosition(Canvas canvas) {
+    // تأثير النبض
     final pulsePaint = Paint()
-      ..color = const Color(0xFF87CEEB).withOpacity(0.3)
-      ..style = PaintingStyle.fill;
+      ..shader = RadialGradient(
+        colors: [
+          const Color(0xFF4facfe).withOpacity(0.3),
+          const Color(0xFF4facfe).withOpacity(0.1),
+          Colors.transparent,
+        ],
+      ).createShader(
+        Rect.fromCircle(center: userPosition, radius: 30 * pulseAnimation.value),
+      );
     
-    canvas.drawCircle(
-      userPosition,
-      scaleValue(28) * pulseAnimation.value,
-      pulsePaint,
-    );
+    canvas.drawCircle(userPosition, 30 * pulseAnimation.value, pulsePaint);
     
-    // رسم موقع المستخدم
+    // موقع المستخدم
     final userPaint = Paint()
-      ..color = const Color(0xFF1E3A8A)
-      ..style = PaintingStyle.fill;
+      ..shader = RadialGradient(
+        colors: [
+          const Color(0xFF4facfe),
+          const Color(0xFF00f2fe),
+        ],
+      ).createShader(Rect.fromCircle(center: userPosition, radius: 12));
     
-    canvas.drawCircle(userPosition, scaleValue(14), userPaint);
+    canvas.drawCircle(userPosition, 12, userPaint);
     
     // الحدود البيضاء
     final borderPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = scaleValue(4);
+      ..strokeWidth = 3;
     
-    canvas.drawCircle(userPosition, scaleValue(14), borderPaint);
-    
-    // نص "أنت هنا"
-    final textPainter = TextPainter(
-      text: const TextSpan(
-        text: "أنت هنا",
-        style: TextStyle(
-          color: Color(0xFF1E3A8A),
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          backgroundColor: Colors.white,
-        ),
-      ),
-      textDirection: TextDirection.rtl,
-    );
-    
-    textPainter.layout();
-    
-    // رسم خلفية للنص
-    final textBackground = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          userPosition.dx - textPainter.width / 2 - scaleValue(4),
-          userPosition.dy - scaleValue(40),
-          textPainter.width + scaleValue(8),
-          textPainter.height + scaleValue(4),
-        ),
-        Radius.circular(scaleValue(8)),
-      ),
-      textBackground,
-    );
-    
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          userPosition.dx - textPainter.width / 2 - scaleValue(4),
-          userPosition.dy - scaleValue(40),
-          textPainter.width + scaleValue(8),
-          textPainter.height + scaleValue(4),
-        ),
-        Radius.circular(scaleValue(8)),
-      ),
-      Paint()..color = const Color(0xFF87CEEB)..style = PaintingStyle.stroke..strokeWidth = scaleValue(2),
-    );
-    
-    textPainter.paint(
-      canvas,
-      Offset(
-        userPosition.dx - textPainter.width / 2,
-        userPosition.dy - scaleValue(38),
-      ),
-    );
+    canvas.drawCircle(userPosition, 12, borderPaint);
   }
 
-  void _drawNavigationPath(Canvas canvas) {
-    if (selectedShop == null) return;
+  void _drawModernNavigationPath(Canvas canvas) {
+    // رسم المسار إلى الهدف
+    if (targetPosition == null) return;
     
-    final shops = floorData["shops"] as List;
-    final facilities = floorData["facilities"] as List;
+    final endPoint = Offset.lerp(userPosition, targetPosition!, pathAnimation.value) ?? userPosition;
     
-    // البحث عن الوجهة
-    Offset? destination;
-    
-    for (var shop in shops) {
-      if (shop["name"] == selectedShop) {
-        final position = scaleOffset(shop["position"] as Offset);
-        final shopSize = scaleSize(shop["size"] as Size);
-        destination = Offset(
-          position.dx + shopSize.width / 2,
-          position.dy + shopSize.height / 2,
-        );
-        break;
-      }
-    }
-    
-    if (destination == null) {
-      for (var facility in facilities) {
-        if (facility["name"] == selectedShop) {
-          destination = scaleOffset(facility["position"] as Offset);
-          break;
-        }
-      }
-    }
-    
-    if (destination == null) return;
-    
-    // رسم المسار بخطوط بيضاء
     final pathPaint = Paint()
-      ..color = Colors.white
+      ..shader = const LinearGradient(
+        colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
+      ).createShader(Rect.fromLTWH(0, 0, screenSize.width, screenSize.height))
       ..style = PaintingStyle.stroke
-      ..strokeWidth = scaleValue(8)
+      ..strokeWidth = 4
       ..strokeCap = StrokeCap.round;
     
-    // رسم خط متقطع بيبي بلو
-    final dashPaint = Paint()
-      ..color = const Color(0xFF87CEEB)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = scaleValue(6)
-      ..strokeCap = StrokeCap.round;
-    
-    // حساب نقاط المسار
-    List<Offset> waypoints = _calculateWaypoints(userPosition, destination);
-    
-    // رسم المسار المتحرك
-    double totalLength = 0;
-    for (int i = 0; i < waypoints.length - 1; i++) {
-      totalLength += (waypoints[i + 1] - waypoints[i]).distance;
-    }
-    
-    double currentLength = 0;
-    double animatedLength = totalLength * pathAnimation.value;
-    
-    for (int i = 0; i < waypoints.length - 1; i++) {
-      final segmentLength = (waypoints[i + 1] - waypoints[i]).distance;
-      
-      if (currentLength + segmentLength <= animatedLength) {
-        // رسم الجزء الكامل
-        canvas.drawLine(waypoints[i], waypoints[i + 1], pathPaint);
-        canvas.drawLine(waypoints[i], waypoints[i + 1], dashPaint);
-      } else if (currentLength < animatedLength) {
-        // رسم جزء من الخط
-        final ratio = (animatedLength - currentLength) / segmentLength;
-        final endPoint = Offset.lerp(waypoints[i], waypoints[i + 1], ratio)!;
-        canvas.drawLine(waypoints[i], endPoint, pathPaint);
-        canvas.drawLine(waypoints[i], endPoint, dashPaint);
-        break;
-      }
-      
-      currentLength += segmentLength;
-    }
-    
-    // رسم سهم في النهاية
-    if (pathAnimation.value > 0.9) {
-      _drawArrow(canvas, destination);
-    }
+    canvas.drawLine(userPosition, endPoint, pathPaint);
   }
 
-  List<Offset> _calculateWaypoints(Offset start, Offset end) {
-    List<Offset> waypoints = [start];
-    
-    // إضافة نقاط وسطية للتنقل عبر الممرات
-    if ((start.dx - end.dx).abs() > (start.dy - end.dy).abs()) {
-      // حركة أفقية أكبر
-      waypoints.add(Offset(screenSize.width * 0.5, start.dy)); // نقطة الممر المركزي
-      waypoints.add(Offset(screenSize.width * 0.5, end.dy));   // نقطة محاذاة الهدف
-    } else {
-      // حركة عمودية أكبر
-      waypoints.add(Offset(start.dx, screenSize.height * 0.571)); // نقطة الممر الأفقي
-      waypoints.add(Offset(end.dx, screenSize.height * 0.571));   // نقطة محاذاة الهدف
-    }
-    
-    waypoints.add(end);
-    return waypoints;
-  }
-
-  void _drawArrow(Canvas canvas, Offset position) {
-    final arrowPaint = Paint()
-      ..color = const Color(0xFF1E3A8A)
-      ..style = PaintingStyle.fill;
-    
-    final path = Path();
-    path.moveTo(position.dx - scaleValue(15), position.dy - scaleValue(10));
-    path.lineTo(position.dx, position.dy);
-    path.lineTo(position.dx - scaleValue(15), position.dy + scaleValue(10));
-    path.lineTo(position.dx - scaleValue(10), position.dy);
-    path.close();
-    
-    canvas.drawPath(path, arrowPaint);
-    
-    // حدود بيضاء للسهم
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = scaleValue(3);
-    
-    canvas.drawPath(path, borderPaint);
-  }
-
-  void _drawLabels(Canvas canvas, Size size) {
-    // عنوان الخريطة
+  void _drawModernLabels(Canvas canvas, Size size) {
+    // رسم عنوان حديث
     final titlePainter = TextPainter(
       text: TextSpan(
         text: floorData["name"],
-        style: TextStyle(
-          color: const Color(0xFF1E3A8A),
-          fontSize: scaleValue(26),
+        style: const TextStyle(
+          color: Color(0xFF2D3436),
+          fontSize: 24,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -2304,153 +2328,37 @@ class MallFloorPainter extends CustomPainter {
     
     titlePainter.layout();
     
-    // رسم خلفية العنوان
-    final titleBackground = Paint()
+    // خلفية العنوان
+    final titleBg = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(size.width / 2, 30),
+        width: titlePainter.width + 40,
+        height: titlePainter.height + 16,
+      ),
+      const Radius.circular(16),
+    );
+    
+    final bgPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;
     
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          (size.width - titlePainter.width) / 2 - scaleValue(15),
-          scaleValue(20),
-          titlePainter.width + scaleValue(30),
-          titlePainter.height + scaleValue(10),
-        ),
-        Radius.circular(scaleValue(15)),
-      ),
-      titleBackground,
-    );
-    
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          (size.width - titlePainter.width) / 2 - scaleValue(15),
-          scaleValue(20),
-          titlePainter.width + scaleValue(30),
-          titlePainter.height + scaleValue(10),
-        ),
-        Radius.circular(scaleValue(15)),
-      ),
-      Paint()..color = const Color(0xFF87CEEB)..style = PaintingStyle.stroke..strokeWidth = scaleValue(2),
-    );
+    canvas.drawRRect(titleBg, bgPaint);
     
     titlePainter.paint(
       canvas,
       Offset(
         (size.width - titlePainter.width) / 2,
-        scaleValue(25),
+        22,
       ),
     );
-    
-    // مفتاح الخريطة
-    _drawLegend(canvas, size);
-  }
-
-  void _drawLegend(Canvas canvas, Size size) {
-    final legendPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    
-    final legendRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width - scaleValue(200), scaleValue(70), scaleValue(180), scaleValue(160)),
-      Radius.circular(scaleValue(15)),
-    );
-    
-    canvas.drawRRect(legendRect, legendPaint);
-    
-    final borderPaint = Paint()
-      ..color = const Color(0xFF87CEEB)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = scaleValue(2);
-    
-    canvas.drawRRect(legendRect, borderPaint);
-    
-    // عنوان المفتاح
-    final legendTitle = TextPainter(
-      text: const TextSpan(
-        text: "مفتاح الخريطة",
-        style: TextStyle(
-          color: Color(0xFF1E3A8A),
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      textDirection: TextDirection.rtl,
-    );
-    
-    legendTitle.layout();
-    legendTitle.paint(
-      canvas,
-      Offset(size.width - scaleValue(190), scaleValue(80)),
-    );
-    
-    // عناصر المفتاح
-    final legendItems = [
-      {"color": const Color(0xFF1E3A8A), "text": "موقعك"},
-      {"color": const Color(0xFFF0F8FF), "text": "ممرات"},
-      {"color": Colors.orange, "text": "متاجر مفتوحة"},
-      {"color": Colors.grey.shade400, "text": "متاجر مغلقة"},
-      {"color": Colors.red, "text": "مفضلة"},
-      {"color": Colors.green, "text": "ازدحام خفيف"},
-      {"color": Colors.orange, "text": "ازدحام متوسط"},
-      {"color": Colors.red, "text": "ازدحام كثيف"},
-    ];
-    
-    for (int i = 0; i < legendItems.length; i++) {
-      final y = scaleValue(105) + i * scaleValue(18);
-      
-      // رسم المربع الملون
-      final colorPaint = Paint()
-        ..color = legendItems[i]["color"] as Color
-        ..style = PaintingStyle.fill;
-      
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.width - scaleValue(190), y, scaleValue(12), scaleValue(12)),
-          Radius.circular(scaleValue(3)),
-        ),
-        colorPaint,
-      );
-      
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.width - scaleValue(190), y, scaleValue(12), scaleValue(12)),
-          Radius.circular(scaleValue(3)),
-        ),
-        Paint()..color = const Color(0xFF87CEEB)..style = PaintingStyle.stroke..strokeWidth = scaleValue(1),
-      );
-      
-      // رسم النص
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: legendItems[i]["text"] as String,
-          style: TextStyle(
-            color: const Color(0xFF1E3A8A),
-            fontSize: scaleValue(11),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        textDirection: TextDirection.rtl,
-      );
-      
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(size.width - scaleValue(170), y + scaleValue(1)),
-      );
-    }
   }
 
   @override
-  bool shouldRepaint(covariant MallFloorPainter oldDelegate) {
-    return oldDelegate.floorData != floorData ||
-           oldDelegate.userPosition != userPosition ||
-           oldDelegate.selectedShop != selectedShop ||
-           oldDelegate.isNavigating != isNavigating ||
-           oldDelegate.favoriteShops != favoriteShops ||
-           oldDelegate.pulseAnimation.value != pulseAnimation.value ||
+  bool shouldRepaint(covariant ModernMallFloorPainter oldDelegate) {
+    return oldDelegate.pulseAnimation.value != pulseAnimation.value ||
            oldDelegate.pathAnimation.value != pathAnimation.value ||
-           oldDelegate.screenSize != screenSize;
+           oldDelegate.selectedShop != selectedShop ||
+           oldDelegate.targetPosition != targetPosition ||
+           oldDelegate.isNavigating != isNavigating;
   }
 }

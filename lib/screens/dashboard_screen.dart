@@ -168,7 +168,7 @@ class DashboardScreenState extends State<DashboardScreen> {
       MaterialPageRoute(
         builder: (context) => EnhancedFloorMapScreen(
           userName: widget.name,
-          floorId: "floor1",
+          floorId: "floor1", 55
         ),
       ),
     );
